@@ -1,0 +1,14 @@
+{
+  "name": "zenn-articles",
+  "version": "1.0.0",
+  "description": "uehaj の Zenn 記事リポジトリ (Zenn Connect 連携用)",
+  "private": true,
+  "scripts": {
+    "new:article": "zenn new:article",
+    "new:book": "zenn new:book",
+    "preview": "zenn preview"
+  },
+  "devDependencies": {
+    "zenn-cli": "^0.1.158"
+  }
+}
