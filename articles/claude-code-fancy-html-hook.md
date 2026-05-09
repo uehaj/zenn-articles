@@ -22,9 +22,11 @@ X 上で見かけた **「もう Markdown じゃなくて HTML でドキュメ�
 - Markdownはdiffなどに有用なので生成はする。「レビュー用ビュー」としてHTMLを追加的に生成する。
 - そのうえで、Claude Code の **PostToolUse hook** で、`.md` を書き出した瞬間に `claude -p` をサブプロセス起動してHTMLを生成させる
 
-これをやるのが以下です。
+これを実装したのが以下のリポジトリです。
 
 リポジトリ: <https://github.com/uehaj/claude-code-fancy-html-hook>
+
+> **動作環境について**: 本スクリプトは確認ダイアログに `osascript` / `display dialog`、ファイルオープンに `open` コマンドを使用しているため、**現状 macOS 専用** です。Linux で動かす場合は `zenity` や `notify-send`、`xdg-open` 等への置き換えが必要です。
 
 ---
 
@@ -45,8 +47,8 @@ on-md-write.sh
    └─ open でブラウザに表示
 ```
 
-ポイントは **`claude` をシェルから別プロセスとして再帰的に呼ぶ** ところで、これが効くのは Claude Code の `claude -p` が **ヘッドレスな one-shot 実行モード** を持っているからです。
-親の Claude Code は普通に作業を続けて、子プロセスが裏でゆっくりリッチ HTML を作ってくれる、という分離がとても気持ちいい。
+ポイントは **`claude` をシェルから別プロセスとして再帰的に呼ぶ** 点です。これが成立するのは、Claude Code の `claude -p` が **ヘッドレスな one-shot 実行モード** を備えているためです。
+親の Claude Code は通常どおり作業を継続し、子プロセスがバックグラウンドでリッチHTMLを生成する、という処理の分離が実現できます。
 
 ### スクリプト本体（要点）
 
@@ -67,7 +69,7 @@ print(d.get('tool_input', {}).get('file_path', ''))
 
 #### 2. `.md` 以外、特定ファイル/ディレクトリは即 exit
 
-hook は **全ての Write/Edit/MultiEdit で発火する** ので、ガード句で早めに弾かないと作業のたびに鬱陶しいことになります。
+hook は **全ての Write/Edit/MultiEdit で発火する** ため、ガード句で早期に対象外を除外しないと、作業のたびに不要な処理が走ってしまいます。
 
 ```bash
 [[ "$FILE_PATH" == *.md ]] || exit 0
@@ -83,10 +85,10 @@ esac
 
 #### 3. AppleScript ダイアログで対話
 
-毎回勝手にHTMLを開かれるとうざいので、`osascript` で確認ダイアログを出します。
-**タイムアウト付き**（`giving up after 20`）にしてあるので、放置しても20秒で勝手に閉じます。
+毎回自動でHTMLが開かれる挙動は煩わしいので、`osascript` で確認ダイアログを表示します。
+**タイムアウト付き**（`giving up after 20`）にしてあるため、操作しなければ20秒で自動的に閉じます。
 
-ちなみに「タイムアウトしたかどうか」をきっちり判定したいなら、`button returned of r` だけでなく `gave up of r` も見るのが正攻法（[Apple公式の AppleScript ガイド](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/DisplayDialogsandAlerts.html)）。今回はボタン文字列の比較だけで実害がなかったので簡略化しています。
+なお「タイムアウトしたかどうか」を厳密に判定したい場合は、`button returned of r` だけでなく `gave up of r` も併せて参照するのが正攻法です（[Apple公式の AppleScript ガイド](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/DisplayDialogsandAlerts.html)）。本スクリプトはボタン文字列の比較だけで実用上問題がないため簡略化しています。
 
 ```bash
 DO_CONVERT=$(osascript -e "
@@ -98,8 +100,8 @@ return theResult
 
 #### 4. 通常HTML（python-markdown）
 
-GitHub 風の見やすいスタイルを当てたシンプルな HTML を `python-markdown` で生成。
-これは「ちょっと色がついてるだけのプレーンHTML」なので一瞬で終わります。
+GitHub 風の見やすいスタイルを当てたシンプルな HTML を `python-markdown` で生成します。
+最低限のCSSを当てる程度の処理なので、変換は瞬時に完了します。
 
 ```bash
 python3 -c "
@@ -114,7 +116,7 @@ html_body = markdown.markdown(text, extensions=['tables', 'fenced_code', 'toc', 
 
 #### 5. ファンシーHTML（claude -p をサブプロセスで起動）
 
-ここが本記事の山場です。**親の Claude Code から、もう一個 Claude Code を呼ぶ**。
+本記事の中核となる処理です。**親の Claude Code から、もうひとつ Claude Code を呼び出す** 構造になっています。
 
 ```bash
 PROMPT='あなたはMarkdownをインフォグラフィック風HTMLに変換する専門家です。
@@ -139,9 +141,9 @@ PROMPT='あなたはMarkdownをインフォグラフィック風HTMLに変換す
 
 - **`--tools ""`**: 子プロセスにツールを渡さない。テキスト生成だけさせる。暴走防止。
 - **`--output-format text`**: パース不要の素テキスト出力。生成された HTML をそのままファイルに流せる。
-- **Markdown 本文は stdin で渡す**: 引数に埋め込むと、長い `.md` で `ARG_MAX` に当たる可能性があるのと、`ps` でプロセス引数として本文が見えてしまうのが微妙。stdin 経由なら両方回避できます。
-- **末尾の `&`（Bash のバックグラウンド演算子）**: ファンシー生成だけを子シェルでバックグラウンド化しています。Claude Code の hook 自体はデフォルト同期で動くので、`&` を付けないと数十秒〜分単位で親の Claude Code を待たせることになります。
-- **プロンプトで「コードフェンスを出すな」と明示**: しないと \`\`\`html ... \`\`\` で囲まれて HTML として開けなくなる、という地味で致命的な事故が起きます。
+- **Markdown 本文は stdin で渡す**: 引数に埋め込むと、長い `.md` で `ARG_MAX` を超過する可能性があり、また `ps` でプロセス引数として本文が露出するリスクもあります。stdin 経由ならいずれも回避できます。
+- **末尾の `&`（Bash のバックグラウンド演算子）**: ファンシー生成だけを子シェルでバックグラウンド化しています。Claude Code の hook 自体はデフォルトで同期実行されるため、`&` を付けないと数十秒〜分単位で親の Claude Code を待たせることになります。
+- **プロンプトで「コードフェンスを出すな」と明示**: 指定しないと出力が \`\`\`html ... \`\`\` で囲まれてしまい、HTML としてブラウザで開けなくなります。
 
 #### 6. 完了したら macOS 通知 + `open`
 
@@ -150,7 +152,7 @@ osascript -e "display notification \"ファンシーHTML生成完了\" with titl
 open "$BEAUTIFUL_FILE"
 ```
 
-数十秒〜数分後に **既定のブラウザ**（`open` が `.html` の関連付けで開いてくれる）がポンと立ち上がる感じになります。
+数十秒〜数分後に、`.html` に関連付けられた **既定のブラウザ** が `open` 経由で起動します。
 
 ---
 
@@ -186,7 +188,7 @@ pip3 install markdown
 }
 ```
 
-これで、Claude Code が `.md` を書き出すたびに macOS のダイアログが出て、Yes を押せば隣にリッチなHTMLが並ぶようになります。
+これで、Claude Code が `.md` を書き出すたびに macOS の確認ダイアログが表示され、生成を選択すると同じディレクトリの `.html/` 配下にリッチなHTMLが生成されるようになります。
 
 ---
 
@@ -194,18 +196,19 @@ pip3 install markdown
 
 ### 良い点
 
-- **レビューが目に優しい**。プレーン Markdown 直読みより、図・色・アイコン付きで概念地図が見える方が圧倒的に速い。
-- **Markdown はソースとして残せる**ので `git diff` も AI 編集もそのまま。**書く側の強み**は維持できる。
-- **対話を Markdown ベースで保ったまま、ビジュアライズだけ AI に外注できる**。CLAUDE.md や設計メモにそのまま使える。
-- **Claude Code が Claude Code を呼ぶ**という構造は、思った以上に応用が効きます。要約・翻訳・図解・差分説明…全部この hook パターンに乗ります。
+- **レビューの視認性が高い**。プレーン Markdown を直接読むよりも、図・色・アイコン付きで概念構造を可視化した方が、内容の把握が圧倒的に速い。
+- **Markdown はソースとして残せる**ため、`git diff` や AI による編集はそのまま機能する。「書く側」の強みは維持できる。
+- **対話は Markdown ベースで保ったまま、ビジュアライズだけ AI に委譲できる**。CLAUDE.md や設計メモにもそのまま適用可能。
+- **Claude Code が Claude Code を呼ぶ**という構造は応用範囲が広い。要約・翻訳・図解・差分説明など、いずれもこの hook パターンに載せられます。
 
 ### 注意点・ハマりどころ
 
-- **コードフェンス問題**: `claude -p` の出力は割と高い確率で \`\`\`html ... \`\`\` で囲まれます。プロンプトで強く禁止しても出ます。気になるなら sed で剥がす後処理を足してください。
-- **ファンシー生成は数十秒〜分単位**。Claude Code の hook はデフォルト同期実行なので、何もしないと親の作業が止まります。スクリプト側で Bash の `&` を使ってファンシー生成だけ並走させましょう。
-- **API 課金**: 親 Claude Code とは別に子プロセスがトークンを消費します。`.md` を量産する作業中は地味に効くので、ダイアログでオプトインにしておくのが吉。
-- **macOS 専用**: `osascript` / `display dialog` / `open` を使っているので Linux/Windows ではそのままでは動きません。`zenity` や `notify-send` に置き換えれば Linux でも動くはずです。
-- **ファイル除外リストは育てる前提**: `CLAUDE.md` `CHANGELOG.md` あたりは最初から外しておかないと作業が止まります。
+- **コードフェンス問題**: `claude -p` の出力は高い確率で \`\`\`html ... \`\`\` で囲まれます。プロンプトで強く禁止しても発生する場合があるため、必要に応じて `sed` 等による後処理で除去してください。
+- **ファンシー生成は数十秒〜分単位**。Claude Code の hook はデフォルト同期実行のため、何もしないと親プロセスの作業が停止します。スクリプト側で Bash の `&` を用いてファンシー生成のみ並走させてください。
+- **API 課金**: 親 Claude Code とは別に子プロセスがトークンを消費します。`.md` を多く生成する場面ではコストが嵩むため、ダイアログによるオプトイン方式を推奨します。
+- **macOS 専用**: `osascript` / `display dialog` / `open` を利用しているため、Linux / Windows ではそのままでは動作しません。Linux で動かす場合は `zenity` や `notify-send`、`xdg-open` 等への置き換えが必要です。
+- **ファイル除外リストは育てる前提**: `CLAUDE.md` や `CHANGELOG.md` などは最初から除外しておかないと、編集のたびに不要な発火が頻発します。
+- **Markdown を頻繁に生成する用途には不向き**: たとえば AI を使ってブログ記事を執筆するようなケースでは、書きかけの `.md` を何度も保存するため、その都度 HTML 生成ダイアログが立ち上がって作業の妨げになります。「ドキュメント／プランファイルを生成して人間がレビューする」ような、生成頻度がそれほど高くない用途に向いています。
 
 ---
 
@@ -221,7 +224,7 @@ pip3 install markdown
 - hook スクリプト本体: <https://github.com/uehaj/claude-code-fancy-html-hook>
 - この記事のソース: <https://github.com/uehaj/zenn-articles>
 
-「Claude Code が Claude Code を呼ぶ」系のレシピは他にも色々作れそうなので、何か面白いの思いついたら教えてください。
+「Claude Code が Claude Code を呼ぶ」系のパターンは他にも応用例が考えられます。事例があればぜひ共有してください。
 
 ---
 
