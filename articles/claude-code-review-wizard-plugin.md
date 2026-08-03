@@ -1,5 +1,5 @@
 ---
-title: "Claude Codeの質問に比較表と図を：AskUserQuestionのブラウザ版 review-wizard"
+title: "AskUserQuestionをもっと見やすくわかりやすく：Claude Codeの質問を図表を駆使したウィザードUIに"
 emoji: "🧙"
 type: "tech"
 topics: ["claudecode", "ai", "plugin", "nodejs"]
