@@ -5,3 +5,4 @@ node_modules/
 
 # Per-article working directories (drafts, plans, internal review materials)
 articles/claude-code-userpromptsubmit-timestamp-hook/
+articles/claude-code-review-wizard-plugin/
