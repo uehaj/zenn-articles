@@ -3,7 +3,7 @@ title: "Claude Code のセッション名を作業ディレクトリ名に自動
 emoji: "🏷️"
 type: "tech"
 topics: ["claudecode", "hook", "tmux", "iterm2", "cli"]
-published: true
+published: false
 ---
 
 ## この記事はこんな人向けです
