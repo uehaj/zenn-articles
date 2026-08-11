@@ -21,6 +21,7 @@ published: false
 - マシンをまたぐ場合は **Remote Control の接続に乗ります**。宛先が `bridge:session_...` という別形式になり、**返信は届いたメッセージの `from` 属性をそのままコピー**しないと解決しません。表示名を推測して指定すると失敗します。
 - 公式ドキュメントは「マシンをまたぐ方向は返信のみで会話を開始できない」としていますが、**手元では新規メッセージが配送されました**。逆に **Claude Code on the web のセッションからは返信できず**(`HTTP 401`、ピア一覧も空)、こちらは片道でした。
 - 配管そのものは堅い作りですが、**外部から汚染された文章が隣のセッションへ渡る経路**が増えます。塞ぐなら `crossSessionInbound: "refuse"` です。
+- マシンをまたぐ経路は **E2E 暗号化ではありません**(公式の記述は経路の TLS まで)。セッション間メッセージは中継役が中身を読む必要のないものなので、ここは E2E であってほしいところです。
 - **未確定の点がいくつも残っています**。ドキュメントと実測の食い違い、経路の暗号化の扱い、会話を始められる条件。この記事は結論ではなく、いまの観測です。
 
 ## セッションに宛先ができた
@@ -47,6 +48,22 @@ Other Claude sessions (55):
 > * **Sessions beyond this machine**: shown while Remote Control is connected and labeled `Remote Control`. These are your sessions on other machines and your Claude Code on the web sessions.
 
 3 番目が曲者で、**別マシンのセッションとクラウド(Claude Code on the web)のセッションが同じラベルで混ざります**。一覧を見ただけではどちらか分かりません。後述しますが、送信してみると結果に書かれています。
+
+### どこで効くか
+
+いちばん分かりやすいのは、**依存関係のある 2 つのプロジェクトを別セッションで開いているとき**です。
+
+プロジェクト A でライブラリを開発していて、プロジェクト B がそれを使っている、という状況を考えます。B の開発中にライブラリ側のバグや改良の余地が見つかることは珍しくありません。従来はこうしていました。B のセッションで見つけた内容を人間が読み、要点をまとめ直して、A のセッションに貼り直す。あるいは issue を立てて、あとで A 側に読ませる。
+
+宛先ができたことで、**B のセッションから A のセッションへ直接渡せます**。B 側は再現条件も呼び出し側の事情も分かっているので、伝える内容を一番よく知っているのは B の Claude です。A 側は自分の文脈(ライブラリの設計意図、他の呼び出し元への影響)を保ったまま受け取れます。人間がコピー&ペーストの中継役から降りられる、という言い方でもよいと思います。
+
+公式ドキュメントが挙げている用途も、性質は同じです。
+
+> * **Hand over a finding**: when one session discovers a breaking change or makes a decision, Claude summarizes it for the session working on the affected area, instead of you re-explaining it there.
+> * **Coordinate parallel worktrees**: when sessions work the same repository in separate worktrees, Claude can tell the other sessions what landed.
+> * **Get status from long-running work**: have a migration or test run report back to the session you're watching, or ask it yourself from there.
+
+ただし、渡した先が**それをどう扱うかは受信側の判断**です。後半で見るように、届いたメッセージは「ユーザの指示」ではなく信頼できない入力として扱われます。B から「この関数の挙動を直して」と送っても、A 側が黙って実装を始めるわけではありません。
 
 なお、これは `claude agents` で開く Agent view とは別の一覧です。あちらは supervisor 配下のバックグラウンドセッションの管理画面で、他の端末で開いている対話セッションは映りません。`/list-agents` には映ります。
 
@@ -257,11 +274,21 @@ View: https://claude.ai/code/session_01FyBdWtaw...
 
 **3. ソケットに書ける相手は「他ユーザ以外の全員」です。**`600` が防ぐのは他ユーザだけで、自分のユーザ権限で動くプロセスなら何でも投げ込めます。npm の postinstall や雑に入れた CLI ツールが、**動作中の Claude に指示文を差し込む足場**を得ます。
 
-**4. マシンをまたぐと記録がサーバに残ります。**
+**4. マシンをまたぐ経路は E2E 暗号化ではありません。**同一マシン内はソケットで完結するので外に出ませんが、マシンをまたぐ分は Anthropic のサーバを経由します。公式の記述は経路の TLS までです。
+
+> All traffic travels through the Anthropic API over TLS, the same transport security as any Claude Code session. The connection uses multiple short-lived credentials, each scoped to a single purpose and expiring independently.
+
+「通常の Claude Code セッションと同じ transport security」、つまり**通信路の TLS** です。両端で鍵を持つ形の暗号化には触れられていません。
+
+ここは「モデルに本文を渡す仕組みなのだから中身が読めて当然」で済ませられない部分だと考えます。セッション間メッセージは、**送信側セッションから受信側セッションへのペイロード**です。それを推論リクエストに載せるかどうかは、受信側セッションが後から下す別の判断であって、**中継役が中身を読める必要があるものではありません**。運搬と利用は分けて設計できるはずで、E2E 暗号化にできる筋合いのものだと思います。
+
+**5. マシンをまたぐと記録がサーバに残ります。**
 
 > While Remote Control is connected, the session transcript, including your messages, Claude's responses, and tool activity, is stored on Anthropic servers.
 
-**5. 一覧そのものが環境の情報です。**筆者の環境では 55 セッションが並び、ローカル分は作業ディレクトリの絶対パスまで表示されました。読めるのは同じマシンの自分のセッションだけですが、2 や 3 が成立したときの下見の材料にはなります。
+保存の目的は端末間の同期と切断からの復帰で、保持は [Data usage](https://code.claude.com/docs/en/data-usage) のポリシーに従うとされています。実行とファイルアクセスはローカルに留まりますが、**やりとりのテキストは残ります**。4 と合わせると、「Remote Control を使っている限り会話の中身は保存される」という構造にはなっています。ただしそれは Remote Control の設計の話で、**メッセージ経路を平文で中継してよい理由にはなりません**。
+
+**6. 一覧そのものが環境の情報です。**筆者の環境では 55 セッションが並び、ローカル分は作業ディレクトリの絶対パスまで表示されました。読めるのは同じマシンの自分のセッションだけですが、2 や 3 が成立したときの下見の材料にはなります。
 
 総じて「穴だらけ」ではなく、**人間の承認疲れに耐性がない設計**という評価が近いと思います。承認ダイアログが日常になった環境では、最後の砦が薄くなります。
 
