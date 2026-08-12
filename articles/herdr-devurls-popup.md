@@ -17,7 +17,7 @@ published: false
 - AI エージェントを使っていると、AIからの回答中に出てきた URL はスクロールして消えます。あとでバックスクロールして探すのが面倒です。
 - そこで、出てきた URL をエージェント自身に整理したメモファイル「URL一覧」へ書かせます。生成した HTML/MD のfile:ファイル名なども書かせ、「このプロジェクトでアクセスする必要のある物の一覧」を自動的に作ります。
 - herdrで任意のキーアサイン、たとえば `prefix+u` でこのファイルをポップアップ表示させます。表示は `fzf` の選択リストにして、Enter でその行を既定アプリ(ブラウザやエディタ)で開けます。マウスは不要です。
-- 実装は herdr の設定 7 行 + シェルスクリプト 1 本(117 行)です。
+- 実装は herdr の設定 7 行 + シェルスクリプト 1 本(135 行)です。
 
 ## はじめに
 
@@ -93,19 +93,40 @@ description = "開発URL台帳を開く"
 # herdr が渡す HERDR_ACTIVE_PANE_CWD を使う。未設定時は PWD にフォールバックする。
 set -uo pipefail
 
+# cwd から上に辿って最初に .claude を持つディレクトリを返す (見つからなければ空)。
+# $HOME/.claude は全プロジェクト共通の設定領域なので候補から外す。
+project_root() {
+  local dir="$1"
+  while [ "$dir" != "/" ]; do
+    if [ "$dir" != "$HOME" ] && [ -d "$dir/.claude" ]; then printf '%s' "$dir"; return 0; fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
 # --- fzf の execute から呼ばれる側 (選択行を open に渡す) -------------------
 # 行から開く対象を 1 つ取り出す。
 #   1. http(s):// または file:// の URL
-#   2. 実在する絶対パス (file:// を付けて開く)
+#   2. 実在するパス。絶対パスのほか、プロジェクトルート基準・cwd 基準の
+#      相対パスも解決する (台帳には相対パスで書かれた行も混ざる)
 target_of() {
-  local line="$1" tok
+  local line="$1" tok base
   set -f  # 台帳の行に * や ? があってもパス名展開しない
   tok="$(printf '%s' "$line" | grep -oE '(https?|file)://[^[:space:]<>"'"'"']+' | head -1)"
   if [ -n "$tok" ]; then printf '%s' "$tok"; return 0; fi
   for tok in $line; do
-    tok="${tok%[.,;:)]}"
+    tok="${tok%[.,;:)]}"          # 行末の句読点を落とす
+    tok="${tok#(}"                 # 前後の括弧を落とす
+    [ -n "$tok" ] || continue
     case "$tok" in
       /*) [ -e "$tok" ] && { printf 'file://%s' "$tok"; return 0; } ;;
+      '~/'*) [ -e "$HOME/${tok#\~/}" ] && { printf 'file://%s' "$HOME/${tok#\~/}"; return 0; } ;;
+      *)
+        # 相対パスらしきトークンだけを対象にする (説明文の単語を誤爆させない)
+        case "$tok" in */*|*.md|*.html|*.txt|*.json|*.png|*.pdf) ;; *) continue ;; esac
+        for base in "$ROOT" "$PWD"; do
+          [ -n "$base" ] && [ -e "$base/$tok" ] && { printf 'file://%s/%s' "$base" "$tok"; return 0; }
+        done ;;
     esac
   done
   return 1
@@ -118,6 +139,8 @@ browser_bundle() {
 }
 
 if [ "${1:-}" = "--open" ] || [ "${1:-}" = "--browser" ] || [ "${1:-}" = "--target" ]; then
+  # 相対パスの解決に使う。第3引数優先 (fzf 側から渡す)、無ければ cwd から探す。
+  ROOT="${3:-$(project_root "$PWD" || true)}"
   target="$(target_of "${2:-}")" || exit 1
   case "${1}" in
     # 動作確認用。open せず抽出結果だけ出す。
@@ -138,12 +161,7 @@ cwd="${HERDR_ACTIVE_PANE_CWD:-$PWD}"
 cwd="$(cd "$cwd" 2>/dev/null && pwd -P || printf '%s' "$cwd")"
 
 # サブディレクトリで押しても同じ台帳が開くよう、.claude を持つ親まで遡る。
-root=""
-dir="$cwd"
-while [ "$dir" != "/" ]; do
-  if [ "$dir" != "$HOME" ] && [ -d "$dir/.claude" ]; then root="$dir"; break; fi
-  dir="$(dirname "$dir")"
-done
+root="$(project_root "$cwd" || true)"
 if [ -n "$root" ]; then
   file="$root/.claude/devurls.md"
   label="$(basename "$root")"
@@ -183,8 +201,8 @@ self="${BASH_SOURCE[0]}"
 grep -vE '^[[:space:]]*(#|$)' "$file" \
   | "$FZF" --no-sort --reverse --height=100% --no-mouse --prompt='open> ' \
         --header="$file  (Enter: 既定アプリで開く / ctrl-b: ブラウザで開く / Esc: 閉じる)" \
-        --bind="enter:execute-silent(bash '$self' --open {})+abort" \
-        --bind="ctrl-b:execute-silent(bash '$self' --browser {})+abort" \
+        --bind="enter:execute-silent(bash '$self' --open {} '$root')+abort" \
+        --bind="ctrl-b:execute-silent(bash '$self' --browser {} '$root')+abort" \
   >/dev/null 2>&1
 exit 0
 ```
@@ -197,7 +215,9 @@ exit 0
 
 **3. 開く処理は自分自身を再実行して行います**。`fzf` の `execute-silent` から `bash '$self' --open {}` と自分を呼び、選択行を引数で受け取ります。開く処理を別ファイルに切り出さずに済みます。Enter は拡張子の既定ハンドラで開くので `.html` はブラウザ、`.md` はエディタに行きます。`.md` を素のままブラウザで見たいときのために、ctrl-b では既定ブラウザを直接指定します(bundle id を LaunchServices の設定から引く、macOS 依存の部分です)。
 
-**4. 行から開く対象を 1 つ取り出します**。台帳の行は「URL + 半角スペース 2 個 + 説明」の形なので、まず `http(s)://` か `file://` の URL を拾い、無ければ**実在する絶対パス**を探して `file://` を付けます。存在チェックを入れているのは、説明文に紛れ込んだスラッシュ始まりの語を誤って開かないためです。
+**4. 行から開く対象を 1 つ取り出します**。台帳の行は「URL + 半角スペース 2 個 + 説明」の形なので、まず `http(s)://` か `file://` の URL を拾います。無ければパスとして解釈しますが、ここが最初に動かなかった箇所です。当初は絶対パスだけを見ていたため、`articles/foo.md` のように**相対パスで書かれた行が開けませんでした**。台帳にはルールを決める前の行も残るので、絶対パス・`~/` 始まり・プロジェクトルート基準・cwd 基準の順に**実在するものを探す**形にしました。存在チェックは、説明文に紛れ込んだスラッシュ入りの語を誤って開かないためです。
+
+相対パスの基準になるプロジェクトルートは、`fzf` の `--bind` から `'$root'` として子プロセスへ渡しています。渡さない場合は子プロセス側で cwd から再探索します。
 
 **5. `fzf` の有無どちらでも動きます**。無ければ `cat` + 1 キー待ちに落ちます。ここで表示に `less` を使わない理由がひとつあります。前述のとおりポップアップは Escape を含む入力をすべて受け取りますが、**`less` に渡すと Esc では閉じられませんでした**(`q` は効きます)。1 文字読んだら終了する `read -rsn1` なら、Esc も 1 文字として受理されます。
 
