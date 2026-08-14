@@ -39,15 +39,11 @@ published: false
 
 この ← は、入力欄が空のときにカーソルを左へ動かすつもりで押してしまいやすく、意図せずセッションをバックグラウンドへ送ってしまうことがあります。止めたい場合は `/config` を開き、Agents view セクションの「← opens agents」をオフにしてください。`~/.claude.json` に `"leftArrowOpensAgents": false` が書き込まれ、以後 ← は通常のカーソル移動だけになります(v2.1.223 で確認)。
 
-注意点として、この挙動は `~/.claude/keybindings.json` では止められません。`left` に `null` を割り当てても効かず、代わりに入力欄でのカーソル左移動が失われるだけです。← の分岐はキーバインドの層ではなく、上記の設定フラグで行われているためです。
-
-なお同じセクションには「Start in agent view」(`defaultToAgentsView`、既定はオフ)もあります。こちらはオンにすると `claude` の起動先が対話セッションではなく Agent view になります。バックグラウンドセッションを常用していて、まず一覧を見てから作業先を選びたい場合の設定です。
-
 Agent view からシェルへ抜けるには、その画面上であらためて `/exit` を実行するか、`Ctrl+C` を2回押します。ただし、これでシェルに抜けても裏で常駐しているsupervisorデーモンは実行をつづけていて、バックグラウンドセッションも動いているままです。Agent view は supervisor デーモンの管理画面です。
 
 ## supervisor デーモンとは何か
 
-supervisor デーモンは、バックグラウンドセッション(ターミナルから切り離されて動くセッション。後の章で詳しく扱います)をホストする、ユーザーごとの常駐プロセスです。実体は `claude daemon run` で起動する独立した OS プロセスです([公式ドキュメント](https://code.claude.com/docs/en/agent-view))。
+supervisor デーモンは、バックグラウンドセッション(ターミナルから切り離されて動くセッション。後の章で詳しく扱います)をホストする、ユーザーごとの常駐プロセスです。実体は `claude daemon run` で起動する[独立した OS プロセス](https://code.claude.com/docs/en/agent-view)です。
 
 全体の構図はこうなっています。
 
@@ -81,46 +77,41 @@ flowchart TB
     W1 & W2 & W3 -- 作業ツリー --> WT
 ```
 
-デーモンは**ユーザーごとに1つ**です。複数のターミナルでそれぞれ `claude` を起動し、別々の対話セッションを持っていても、それらはすべて同じ1つのデーモンにつながります。ソケットのパスが `/tmp/cc-daemon-<uid>/` と UID 単位になっているのはその表れで、そのマシンのそのユーザーのセッションは、対話・バックグラウンドを問わず1つの台帳(roster.json)に集約されます。
+デーモンは**ユーザーごとに1つ**です。複数のターミナルでそれぞれ `claude` を起動し、別々の対話セッションを持っていても、それらはすべて同じ1つのデーモンにつながります。ソケットのパスが `/tmp/cc-daemon-<uid>/` と UID 単位になっているのはその表れで、そのマシンのそのユーザーのセッションは、対話・バックグラウンドを問わず1つの台帳(`~/.claude/daemon/roster.json`)に集約されます。
 
-クライアント側(各ターミナルの対話セッション、Agent view)はすべて「切断してよい」側にいます。セッションの生殺与奪を握っているのは supervisor デーモンとディスクの側であり、だからこそターミナルを閉じても、Claude Code のバイナリを更新しても、バックグラウンドセッションは生き残ります。シェルに慣れた人向けに一言でいえば「tmux サーバの Claude Code 版」です。tmux サーバが PTY を握っているから端末を閉じてもセッションが生きるのと同じ構図で、`C-z` + `bg` のジョブ制御(プロセスが端末にひもづいたまま)とは別物です。
+クライアント側(各ターミナルの対話セッション、Agent view)はすべて「切断してよい」側にいます。セッションの生殺与奪を握っているのは supervisor デーモンとディスクの側であり、だからこそターミナルを閉じても、Claude Code のバイナリを更新しても、バックグラウンドセッションは生き残ります。シェルに慣れた人向けに一言でいえば「tmux サーバの Claude Code 版」です。tmux サーバが PTY を握っているから端末を閉じてもセッションが生きるのと同じ構図で、`C-z` + `bg` のジョブ制御(プロセスが端末にひもづいたまま)とも別物です。
 
 :::message
 では、tmux の中で `claude` を動かせば supervisor は要らないのかというと、そうではありません。tmux が生かしておけるのは端末とその中のプロセスだけで、プロセスが死ねばそこまでです。supervisor が守っているのはプロセスではなく、セッションというデータ(transcript と状態台帳)です。この違いは後述の「セッションとプロセスの関係」で詳しく見ます。
 :::
 
-デーモンといっても、OS に登録して常駐し続けるサービスではありません。最初のバックグラウンドセッションが作られたときにオンデマンドで立ち上がり、預かるものがなくなれば黙って終了します。この振る舞いは後半の実機観察で確かめます。
+デーモンといっても、OS に登録して常駐し続けるサービスではありません。最初のバックグラウンドセッションが作られたときにオンデマンドで立ち上がり、預かるものがなくなれば黙って終了します。
 
-supervisor と Agent view は v2.1.139([whats-new 2026-w20](https://code.claude.com/docs/en/whats-new/2026-w20)、2026年5月11日から15日の週)で同時に research preview として公開されました([公式ブログの発表](https://claude.com/blog/agent-view-in-claude-code)は2026年5月11日)。supervisor がインフラ、Agent view がその UI という表裏一体の関係です。もっとも、Agent view は導入当初、`claude agents` で明示的に起動しないと表示されない画面でした。`/exit` や ← から不意に開くようになったのは、その後の更新でアクセス経路が増えたためです。
+supervisor と Agent view は v2.1.139([whats-new 2026-w20](https://code.claude.com/docs/en/whats-new/2026-w20)、2026年5月11日から15日の週)で同時に research preview として公開されました([公式ブログの発表](https://claude.com/blog/agent-view-in-claude-code)は2026年5月11日)。supervisor がインフラ、Agent view がその UI という表裏一体の関係です。
 
 ## Agent view でバックグラウンドセッションを一覧する
 
-`claude agents` と打つと、ターミナル上にセッション一覧の画面が開きます。対話セッションの中から ← キーで開くこともできますが、導入で述べたとおり、こちらは単なる画面切り替えではなく「いまのセッションをバックグラウンド化してから Agent view に移る」操作です。並ぶのは supervisor 配下の**バックグラウンドセッション**(次節で定義します)の一覧です。別のターミナルで開いている対話セッションは、バックグラウンド化するまで一覧に現れません([公式ドキュメント](https://code.claude.com/docs/en/agent-view): "Interactive sessions you have open in other terminals don't appear until you background them")。Working、Needs input、Idle、Completed のように状態別に分類され、今どのセッションが手を止めているかが一目でわかります。
+`claude agents` と打つと、ターミナル上にセッション一覧の画面が開きます。対話セッションの中から ← キーで開くこともできますが、導入で述べたとおり、こちらは単なる画面切り替えではなく「いまのセッションをバックグラウンド化してから Agent view に移る」操作です。並ぶのは supervisor 配下の**バックグラウンドセッション**(次節で定義します)の一覧です。別のターミナルで開いている対話セッションは、[バックグラウンド化するまで一覧に現れません](https://code.claude.com/docs/en/agent-view)。セッションは状態別に分類され、今どのセッションが手を止めているかが一目でわかります。
 
 <!-- TODO: スクショ: Agent view 一覧画面 -->
 
-一覧から先の操作もひととおり揃っています。Enter で選択したセッションに**アタッチ**(自分の端末を接続)して通常の会話として再開でき、Space で会話に入らずに様子だけ覗けます(peek)。また、Agent view でプロンプトを入力すると、そのタスクを実行する新しいバックグラウンドセッションを作れます。このように「端末に付けずに仕事を送り出す」操作を公式ドキュメントは**ディスパッチ**(dispatch)と呼びます(`claude --bg` もシェルからのディスパッチです)。Shift+Enter は新規ディスパッチしてそのままアタッチ、Ctrl+S でディレクトリ別にグループ化、Ctrl+T でピン留め、Ctrl+R でリネーム、Ctrl+X で停止や削除ができます。アタッチした状態での `/exit` は終了ではなくデタッチとして扱われ、Agent view に戻ります。抜けるには Agent view 側で `/exit` するか `Ctrl+C` を2回押す必要があり、`Esc` は手前のセッションに戻るだけで抜け先にはなりません。実際に `claude agents --help` を引くと、これらに加えて `--json` オプションの存在も確認できます。
+一覧から先の操作もひととおり揃っています。
 
-```
-$ claude agents --help
-Usage: claude agents [options]
+| キー | 操作 |
+| --- | --- |
+| Enter | 選択したセッションにアタッチ(自分の端末を接続)し、通常の会話として再開する |
+| Space | 会話に入らず様子だけ覗く(peek) |
+| プロンプト入力 | そのタスクを実行する新しいバックグラウンドセッションを作る(ディスパッチ) |
+| Shift+Enter | 新規ディスパッチして、そのままアタッチ |
+| Ctrl+S | ディレクトリ別にグループ化 |
+| Ctrl+T | ピン留め |
+| Ctrl+R | リネーム |
+| Ctrl+X | 停止・削除 |
+| `/exit` | アタッチ中はデタッチとして扱われ、Agent view に戻る |
+| Ctrl+C 2回 | Agent view からシェルへ抜ける (`Esc` は手前のセッションに戻るだけ) |
 
-Manage background agents
+「端末に付けずに仕事を送り出す」この操作を、公式ドキュメントは**ディスパッチ**(dispatch)と呼びます。`claude --bg` もシェルからのディスパッチです。
 
-Options:
-  --json                                 Print active sessions (interactive and
-                                         background) as a JSON array and exit
-                                         (for scripting; does not require a TTY)
-  --all                                  With --json: also include completed
-                                         background sessions
-  --cwd <path>                           Show only background sessions started
-                                         under <path>
-  ...
-```
-
-`--json` を使えば画面を介さずスクリプトから一覧を取得できるので、Agent view は人間が眺めるビューであると同時に、自動化の入口でもあります。
-
-Agent view とセットで考えるべきなのは、一覧に映っているものの正体です。
 
 ## バックグラウンドセッションとは何か
 
