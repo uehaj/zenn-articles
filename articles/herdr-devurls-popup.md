@@ -3,7 +3,7 @@ title: "バックスクロールしてURLを探す旅に終止符を—URLを自
 emoji: "🔖"
 type: "tech"
 topics: ["claudecode", "herdr", "terminal", "cli"]
-published: false
+published: true
 ---
 
 :::message
@@ -21,7 +21,7 @@ published: false
 
 ## はじめに
 
-NTTテクノクロスの上原です。ネトフリ「ガス人間」をはらはらしながら見ています。
+NTTテクノクロスの上原です。Netflix「ガス人間」をはらはらしながら見ています。
 
 さて、AIエージェントをつかっているときに、途中でURLを出力することがあります。「開発サーバをたてましたがURLはこれです」とか、HTMLファイルをここに生成しましたとか、調査に使った参考URLはここです、などです。
 
