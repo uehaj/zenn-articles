@@ -2,7 +2,7 @@
 title: "ターミナルを閉じてもClaude Codeが動き続ける理由、supervisorデーモンとAgent viewについて"
 emoji: "🛰️"
 type: "tech"
-topics: ["claudecode", "ai", "llm"]
+topics: ["claudecode", "claude", "生成ai", "aiエージェント", "llm"]
 published: true
 ---
 
