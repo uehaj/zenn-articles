@@ -69,6 +69,10 @@ flowchart TB
 ```
 *図1 — 未決定ノードのうち、親がすべて決着済み(緑)のものだけがフロンティア(青)になる。Q4・Q5 は親(Q1・Q3)が未決定なので、まだ聞けない*
 
+:::message
+「設計木(design tree)」という呼び名自体は grilling の SKILL.md 上のもので、確立された標準用語ではありません。ただし「設計の審議を、問いとその解決の連なりとして構造化する」考え方には設計根拠(design rationale)研究の系譜があります。代表格は、設計を issue(論点)・position(立場)・argument(論拠)のつながりとして記録する [IBIS](https://en.wikipedia.org/wiki/Issue-based_information_system)(Kunz & Rittel, 1970)と、Questions・Options・Criteria で設計空間を分析する [QOC](https://en.wikipedia.org/wiki/Design_rationale)(MacLean ら, 1991)です。grilling のフロンティアは、この系譜の「未解決の問いを依存順に潰していく」運用を LLM への短いプロンプトに圧縮したものと見ることができます。なお、機械学習の決定木(decision tree)や CAD ソフトの design tree(形状の履歴ツリー)とは別物です。
+:::
+
 ## フロンティア: いま聞ける質問の全部
 
 **フロンティア**とは、前提(親の決定)がすべて決着している未決定ノードの集合です。言い換えると、**まだ聞いていない答えを推測せずに、いま聞ける質問の全部**。図1 なら Q1・Q2・Q3 の 3 つです。
@@ -95,6 +99,8 @@ flowchart LR
 この定義の出典は grilling の [SKILL.md](https://github.com/mattpocock/skills/blob/main/skills/productivity/grilling/SKILL.md) です。
 
 > The frontier is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet.
+
+(仮訳: フロンティアとは、前提がすべて決着している決定の全部——つまり、まだ聞いていない答えを推測することなく、**いま**聞ける質問のことである。)
 
 ## 判定の唯一の基準: 同一ラウンド内の依存を禁じる
 
@@ -157,7 +163,7 @@ flowchart TB
 
 ## では、その設計木はどこに保存されているのか
 
-ラウンドが進むたびに木が組み替わり、フロンティアが再計算される——と聞くと、どこかに木のデータ構造があって、ラウンド間で更新・保持されているように思えます。筆者も最初そう考えて、「まったく新しい木を毎回作ってはいないはずだが、どうやって保持しているのか」を調べました。
+ラウンドが進むたびに木が組み替わり、フロンティアが再計算される——と聞くと、どこかに木のデータ構造があって、ラウンド間で更新・保持されているように思えます。
 
 結論は、**明示的なデータ構造としての決定木はどこにも存在しない**、です。
 
