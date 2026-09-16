@@ -14,7 +14,9 @@ published: false
 
 ## はじめに
 
-NTTテクノクロスの上原です。以前執筆した記事「[AskUserQuestionをもっと見やすくわかりやすく](https://zenn.dev/uehaj/articles/claude-code-review-wizard-plugin)」では、grill 系スキルによる質疑応答をブラウザ上のウィザード UI で操作できるようにする工夫を紹介しました。今回は一歩踏み込み、その grill 系スキルの核心部、すなわち**質問がどのような仕組みで生成され、その進行状態がどこに保持されているのか**という内部メカニズムを解説します。
+NTTテクノクロスの上原です。最近、攻殻機動隊THE GHOST IN THE SHELLにはまりました。ヤンジャン連載を読んでたリアタイ勢としては最高ですね。やはりタチコマよりフチコマでしょう。
+
+さて、以前執筆した記事「[AskUserQuestionをもっと見やすくわかりやすく](https://zenn.dev/uehaj/articles/claude-code-review-wizard-plugin)」では、grill 系スキルによる質疑応答をブラウザ上のウィザード UI で操作できるようにする工夫を紹介しました。今回は一歩踏み込み、その grill 系スキルの核心部、すなわち**質問がどのような仕組みで生成され、その進行状態がどこに保持されているのか**という内部メカニズムを解説します。
 
 ## TL;DR
 
