@@ -288,6 +288,6 @@ grilling のフロンティア方式は、「相互に依存しない質問の�
 
 実はこのことは、Anthropic のエンジニア自身によって予告されてもいます。Claude Code の作者 Boris Cherny 氏は、[YC Startup School 2026 での対談](https://www.ycombinator.com/library/UN-boris-cherny-building-claude-code)(2026年7月)で、新しいモデルが出るたびにシステムプロンプトの大部分を削除・書き換えていて直近では 80% を削除したこと、もはや scaffolding(足場)を使う必要すらないこと、そして Claude Code のユーザーにも「6か月ごとに CLAUDE.md も skills も hooks も削除してみるべきだ」と勧めることを語っています。grilling の解剖を通じて、この予告をあらためて実感できました。
 
-ただし、これはハーネスエンジニアリングそのものが無くなるという意味ではありません。Anthropic の公式エンジニアリングブログにも、[モデルが向上してもハーネスの組み合わせの余地は縮小せず、移動するのだという見解](https://www.anthropic.com/engineering/harness-design-long-running-apps)があります。実際その記事で「不要になった」と挙げられているのは、コンテキスト不安を避けるためのリセットや、タスクの事前分解といった、**モデルの知的な弱さを補うための足場**です。モデルに吸収されていくのは判断と手順であって、権限・記憶(セッションを超えた永続化)・検証のような、賢さでは代替できない器は残ります。grilling はまさにその境界の実例です。木の巡回という規律はプロンプト(モデルの頭の中)へ移り、セッションを超える永続化だけが、domain-modeling という外部の器(ADR・CONTEXT.md)に残されているのです。
+ただし、ハーネスエンジニアリングそのものが無くなるわけではありません。Anthropic の公式ブログにも[ハーネスの余地は縮小せず移動する、という見解](https://www.anthropic.com/engineering/harness-design-long-running-apps)があります。モデルに吸収されるのは判断と手順であって、権限・記憶・検証といった賢さでは代替できない器は残ります。grilling はその境界の実例です——規律はプロンプトへ移り、永続化だけが domain-modeling という外部の器に残されています。
 
 なお、grilling による質問ラウンドの見せ方(UI)を改善する取り組み(ブラウザ上のウィザード UI へ流し込む工夫)については[前回の記事](https://zenn.dev/uehaj/articles/claude-code-review-wizard-plugin)で解説していますので、あわせてご覧ください。
