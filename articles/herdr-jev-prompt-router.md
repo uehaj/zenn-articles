@@ -2,7 +2,7 @@
 title: "そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう"
 emoji: "🚦"
 type: "tech"
-topics: ["claudecode", "herdr", "aisdk", "typescript", "llm"]
+topics: ["claudecode", "herdr", "aisdk", "typescript", "jev"]
 published: false
 ---
 
