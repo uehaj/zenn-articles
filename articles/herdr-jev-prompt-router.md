@@ -3,7 +3,7 @@ title: "そのプロンプト、どのプロジェクトに投げるんでした
 emoji: "🚦"
 type: "tech"
 topics: ["claudecode", "herdr", "aisdk", "typescript", "jev"]
-published: false
+published: true
 ---
 
 :::message
@@ -26,7 +26,7 @@ AI エージェントを複数のプロジェクトで並行して走らせて�
 
 ## TL;DR
 
-- 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（評価モデル）** に選ばせるルータを書きました。TypeScript で 56 行です。
+- 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（評価モデル）** に選ばせるルータを書きました。TypeScript で 51 行です。
 - Jev は文章を生成せず、**typed な質問に対して選択肢・スコア・真偽確率だけを返す**モデルです。AI SDK 7 の `experimental_evaluate` から呼べます。
 - 今回、候補の作り方が肝で、**`criteria` のキーを機械用の ID、値を LLM 用の説明文**にすると、返ってきた答えをそのままキーとして使えます。
 - 最後に Enter は打ちません。**入力欄に文字列を置くだけ**にして、送信するかどうかの判断は人間に残しています。
