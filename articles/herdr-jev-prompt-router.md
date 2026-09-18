@@ -232,7 +232,7 @@ herdr('notification', 'show', `-> ${target.label}`, '--sound', 'none');
 
 つまりこの 4 行は「フォーカス 2 つ → 入力 → 通知」という手順であると同時に、**再描画を起こす操作を後ろに置くための並び**でもあります。通知の表示は、どこに送られたかをトーストで知らせる UI 上の意味だけでなく、**再描画を確実に起こすトリガー**としての役割も兼ねています。音は不要なので `--sound none` を指定しています（`herdr notification show --help`（herdr 0.9.0）に `none` / `done` / `request` の 3 値があります）。
 
-## 起動の仕組み
+## ショートカットキーでポップアップさせる
 
 手で `node route.mts ...` と打つのでは本末転倒なので、herdr のキーに割り当てています。`~/.config/herdr/scripts/route-prompt.sh` の全文です。
 
