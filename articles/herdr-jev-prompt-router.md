@@ -250,14 +250,6 @@ exec node --env-file=.env route.mts
 
 herdr 側の設定は、[以前の記事](https://zenn.dev/uehaj/articles/herdr-devurls-popup)で書いた URL 台帳のポップアップと同じ要領で、`[[keys.command]]` に `type = "popup"` で割り当てています。
 
-判定の精度を確かめたいときは `DRY` を立てます。
-
-```console
-$ DRY=1 node --env-file=.env route.mts "さっきのエラー、設定ファイルも見て"
-```
-
-送信は行わず、stderr に選ばれた宛先の 1 行（`-> <workspace_id> <label> (<pane_id>)`）と、`probabilities` のオブジェクトだけが出ます。候補の `label` をどう作ると当たりやすいかを調整するときに使っています。
-
 ## おわりに
 
 「宛先を選ぶ」という操作は、人間にとっては一瞬の判断でも、手を動かすコストが意外に高い部類の作業です。タブを探し、移動し、その間に何を書こうとしていたか思い出す。この往復がなくなるだけで、思いついたことを書き留めるハードルはかなり下がりました。
