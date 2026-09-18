@@ -2,7 +2,7 @@
 title: "計画を質問攻めで鍛えるgrillingを解剖する：フロンティア式ラウンドと、実は保存されていない決定木"
 emoji: "🍖"
 type: "tech"
-topics: ["claudecode", "ai", "llm"]
+topics: ["claudecode", "ai", "llm", "mattpocock"]
 published: true
 ---
 
