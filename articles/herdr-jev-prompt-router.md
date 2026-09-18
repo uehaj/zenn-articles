@@ -14,21 +14,21 @@ published: false
 
 ## はじめに
 
-NTTテクノクロスの上原です。ターミナルのタブが二桁になってから、記憶力に頼るのをやめました。
-
 AI エージェントを複数のプロジェクトで並行して走らせていると、ワークスペースが増えます。筆者の手元では、社内ツールの障害調査、別プロダクトの改修、記事の下書き、実験用の使い捨てディレクトリ……といった具合に、常時 5〜10 個が開きっぱなしです。
 
 この状態で困るのが、**思いついたことを書き留めたいときに、宛先を自分で選ばないといけない**ことです。「さっきのエラー、設定ファイルのほうも疑ったほうがよさそう」と思いついたとして、それを打ち込むべきペインがどれだったかを思い出し、そこまで移動してから入力する。移動の時点で、何を書こうとしていたか半分忘れています。
 
-やりたいのは、**プロンプトを 1 箇所で書いたら、内容から宛先が決まって、そのペインに入る**ことです。これは要するに分類問題なので、正規表現やキーワード表でも書けます。書けますが、プロジェクトが増減するたびにルールを足す羽目になるのが目に見えています。
+やりたいことはシンプルで、ショートカッットキーでコマンドパレットを表示させ、**プロンプトを 1 箇所で書いたら、内容から自動で宛先が決まり、そのペインの入力欄に入る**という状態です。
 
-そこで、分類そのものをモデルに任せることにしました。ただし生成 LLM ではなく、**評価専用のモデル**を使います。
+![alt text](image.png)
+
+このとき、宛先のワークスペースを判断する必要がありますが、分類タスクですから、いま話題の**話題の意思決定モデルJev**を使います。
 
 ## TL;DR
 
 - 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（評価モデル）** に選ばせるルータを書きました。TypeScript で 56 行です。
 - Jev は文章を生成せず、**typed な質問に対して選択肢・スコア・真偽確率だけを返す**モデルです。AI SDK 7 の `experimental_evaluate` から呼べます。
-- 候補の作り方が肝で、**`criteria` のキーを機械用の ID、値を LLM 用の説明文**にすると、返ってきた答えをそのままキーとして使えます。
+- 今回、候補の作り方が肝で、**`criteria` のキーを機械用の ID、値を LLM 用の説明文**にすると、返ってきた答えをそのままキーとして使えます。
 - 最後に Enter は打ちません。**入力欄に文字列を置くだけ**にして、送信するかどうかの判断は人間に残しています。
 
 ## なぜ生成モデルではなく評価モデルなのか
@@ -47,9 +47,9 @@ AI Gateway のモデルページによれば、Jev の最大出力トークン�
 
 TypeSafe 社の報告として、Vercel は「自社のワークフロー評価において LLM 比で最大 193.6 倍高速・444.6 倍安価」という数字を紹介しています（同 changelog）。これは同社自身の測定値であり、筆者が検証したものではありません。ただ、今回のような「1 プロンプトにつき 1 回、選択肢 10 個弱から 1 つ選ぶ」規模であれば、速度も費用も気にする水準ではありません。
 
-## 全体の流れ
+## 全体の処理フロー
 
-```
+```text
 プロンプト (argv または対話入力)
         │
         ├── herdr agent list ─→ ワークスペースごとに代表ペインを 1 つ選ぶ
@@ -120,22 +120,19 @@ console.error(answers.workspace.probabilities);
 
 if (process.env.DRY) process.exit(0);
 
-// ponytail: newlines collapsed to spaces - send-text writes raw bytes, so a
-// newline would submit. Wrap in bracketed paste if multi-line prompts matter.
-// Focus first: workspace.focus does not itself request a repaint, so it only
-// reaches the attached client when something later redraws. send-text and the
-// toast both do, so ordering is what makes the view actually move.
 herdr('workspace', 'focus', wid);
 herdr('agent', 'focus', target.pane_id);
 herdr('pane', 'send-text', target.pane_id, prompt.replace(/\r?\n/g, ' '));
 herdr('notification', 'show', `-> ${target.label}`, '--sound', 'none');
 ```
 
-Node 23.6 以降は `.mts` の型注釈をフラグなしで剥がして実行できるので、`tsx` や `ts-node` は入れていません。`tsconfig.json` も置いていないため、型注釈は実行時に捨てられるだけで型検査は走っていません。
+`tsx` や `ts-node` は入れていません。`tsconfig.json` も置いていないため、型注釈は実行時に捨てられるだけで型検査は走っていません。
 
 ## ポイント解説
 
-### herdr の状態を読む
+UIですが、Claude Codeの新機能Claude Modsをつかうことも考えましたが、ワークスペースがきりかわったほうがいいのでHerdr連携にしました。Claude Modsだけなら[Cross Sesssion Messaging](https://code.claude.com/docs/en/cross-session-messaging)でプロンプトを送り合うみたいな実装にもできるでしょう。
+
+### 1. herdr の状態を読む
 
 herdr は AI エージェント向けのターミナルマルチプレクサで、ペインやワークスペースをソケット API 越しに操作する CLI を持っています。`herdr agent list` は次のような JSON を返します（パスとタイトルはマスクしています）。
 
@@ -165,9 +162,9 @@ herdr は AI エージェント向けのターミナルマルチプレクサで�
 
 `pane send-text` は標準出力に何も返さないので、空文字のときは `JSON.parse('')` を避けて `null` を返しています。
 
-### ワークスペースごとに候補を 1 つに畳む
+### 2. ワークスペースごとに候補を 1 つに絞り込む
 
-herdr は 1 つのワークスペースに複数のエージェントペインを持てます。一方、選ばせたい粒度は「プロジェクト」なので、ワークスペース単位に畳み込みます。選択肢が増えるほど分類は鈍りますし、同じプロジェクトの別ペインが並んでいても人間には区別がつきません。
+herdr は 1 つのワークスペースに複数のエージェントペインを持てます。一方、選ばせたい粒度はあくまで「プロジェクト単位」です。選択肢が多すぎると分類精度が落ちますし、同じプロジェクトの別ペインが並んでいても人間には区別がつきません。そこで、ワークスペース単位に情報を畳み込みます。
 
 ```ts
 if (candidates.has(a.workspace_id) && a.agent_status === 'working') continue;
@@ -175,18 +172,17 @@ if (candidates.has(a.workspace_id) && a.agent_status === 'working') continue;
 
 この 1 行は「すでに候補がいて、かつ今見ているのが `working`」のときだけスキップする、という後勝ちのロジックです。挙動を表にするとこうなります。
 
-| 既存候補 | 今のエージェント | 結果 |
+| 既存の候補 | 今評価しているエージェント | 結果 |
 |---|---|---|
 | なし | idle | 登録される |
 | なし | **working** | **登録される**（最初の 1 件は状態を問わない） |
 | あり | idle | 上書きされる（後勝ち） |
-| あり | working | スキップ。既存を温存 |
+| あり | working | スキップされ、既存候補が温存される |
 
-コメントには `prefer one that is not mid-turn`（応答中でないペインを優先する）と書いていますが、厳密にはそこまで賢くありません。ワークスペース内の全ペインが `working` なら最初の 1 件がそのまま候補になりますし、idle が 2 つあれば単に最後のものが勝つだけです。前者は「送り先が消えるよりはマシ」なので意図どおり、後者は実用上どちらでも困らないので放置しています。
 
 `label` は `${basename(cwd)} — ${terminal_title_stripped}` で組み立てています。フルパスだとノイズが多いので `basename` で畳み、ステータス記号を除いたターミナルタイトルで「いま何をしているか」を足しています。**これが分類モデルに見せる唯一の説明文**です。
 
-### criteria のキーと値で役割を分ける
+### 3. criteria のキーと値で役割を分ける
 
 `choice` 型でいちばん効いているのがここです。
 
@@ -196,10 +192,10 @@ criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
 
 公式ドキュメントでは `choice` の `criteria` は "A nonempty map of options to descriptions"（仮訳: 選択肢から説明への、空でないマップ）と説明されています（出典: [Evaluation — AI SDK Core](https://ai-sdk.dev/docs/ai-sdk-core/evaluation)）。このキーと値で、役割をきれいに分けられます。
 
-| 位置 | 中身 | 役割 |
+| 位置 | 中身の例 | 役割 |
 |---|---|---|
-| キー | `"w68"` などの workspace_id | 選択肢の識別子。`answers.workspace.choice` としてそのまま返る |
-| 値 | `"<project> — エラー切り分け"` | その選択肢の説明。モデルが読む |
+| **キー** | `"w68"` などの `workspace_id` | 選択肢の識別子。判定後に `answers.workspace.choice` としてそのまま返る |
+| **値** | `"<project> — エラー切り分け"` | その選択肢の具体的な説明。モデルが読み取るテキスト |
 
 つまりこの 1 行で「**機械が使う ID**」と「**モデルが読む説明**」を同時に渡しています。返ってきた `choice` をそのまま `candidates.get()` のキーにできるので、後段で名前の逆引きをする必要がありません。ID を人間可読な名前にしたい誘惑に駆られますが、その必要はないわけです。
 
@@ -207,9 +203,7 @@ criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
 
 なお、`Object.fromEntries` で動的に組んでいるため、TypeScript 上は `criteria` の型が `Record<string, string>` に広がり、`choice` はただの `string` になります。リテラルで書けば `'positive' | 'neutral'` のようなユニオン型に絞られるので、静的な選択肢ならそちらのほうが型の恩恵は大きいです。
 
-`candidates.get(wid)!` の `!` は、`Map.get` がキーの型に関係なく `V | undefined` を返すために付いているだけです。ここで「モデルが知らないキーを返したらどうするのか」が気になりますが、**AI SDK 側がレスポンス検証で `choice` が `criteria` のキーに含まれるかを確認して throw します**（`ai@7.0.106` の `dist/index.js` 内のバリデーション）。同様に、候補が 0 件で `criteria: {}` を渡した場合も、I/O の前に `"choice criteria must be a nonempty option map"` で弾かれます。エージェントが 1 つも走っていないときは早期 return したほうが親切ですが、現状は握っていません。
-
-### 改行を潰す、そして Enter は打たない
+### 4. 改行を潰し、最後の Enter は押さない
 
 ```ts
 herdr('pane', 'send-text', target.pane_id, prompt.replace(/\r?\n/g, ' '));
@@ -219,9 +213,9 @@ herdr('pane', 'send-text', target.pane_id, prompt.replace(/\r?\n/g, ' '));
 
 ここで意図的にやっていないのが、**改行を送って確定すること**です。このツールがやるのは入力欄に文字列を置くところまでで、送信するかどうかは対象ペインを見た人間が決めます。
 
-分類モデルは確率を返すのであって、正解を保証するわけではありません。宛先を間違えたまま自動で走り出すと、無関係なプロジェクトでエージェントが動き始めます。逆に、入力欄に置くだけなら、間違っていても Ctrl-U で消せば済みます。自動化の範囲を「移動と入力」に絞り、「実行」を人間に残しておくと、精度が 100% でなくても実用になります。
+分類モデルは確率を返すのであって、正解を保証するわけではありません。宛先を間違えたまま自動で走り出すと、無関係なプロジェクトでエージェントが動き始めます。逆に、入力欄に置くだけなら、間違っていても Ctrl-U で消せば済みます。**自動化の範囲を「移動と入力」に限定し、「実行」のトリガーを人間に残す**ことで、精度が 100% でなくても実用的なツールになります。
 
-### workspace focus が効かないときがある
+### 5. workspace focus が効かないケースへの配慮
 
 最後に、順序に意味がある箇所の話です。
 
@@ -236,9 +230,9 @@ herdr('notification', 'show', `-> ${target.label}`, '--sound', 'none');
 
 ただし、**`workspace focus` はそれ自体が再描画を要求しません**。後続の何かが画面を描き直したときに、初めてクライアント側に反映されます。`send-text` と通知の表示はどちらも再描画を伴うので、`focus` を先に置いておけば結果として画面が動く、という順序依存になります。コード中のコメントに書いてあるのはこのことです。
 
-つまりこの 4 行は「フォーカス 2 つ → 入力 → 通知」という手順であると同時に、**再描画を起こす操作を後ろに置くための並び**でもあります。通知は送り先をトーストで出す UI 上の意味もありますが、順序の担保も兼ねています。音は不要なので `--sound none` を指定しています（`herdr notification show --help`（herdr 0.9.0）に `none` / `done` / `request` の 3 値があります）。
+つまりこの 4 行は「フォーカス 2 つ → 入力 → 通知」という手順であると同時に、**再描画を起こす操作を後ろに置くための並び**でもあります。通知の表示は、どこに送られたかをトーストで知らせる UI 上の意味だけでなく、**再描画を確実に起こすトリガー**としての役割も兼ねています。音は不要なので `--sound none` を指定しています（`herdr notification show --help`（herdr 0.9.0）に `none` / `done` / `request` の 3 値があります）。
 
-## 起動口
+## 起動の仕組み
 
 手で `node route.mts ...` と打つのでは本末転倒なので、herdr のキーに割り当てています。`~/.config/herdr/scripts/route-prompt.sh` の全文です。
 
