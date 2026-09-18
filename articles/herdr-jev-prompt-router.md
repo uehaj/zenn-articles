@@ -1,5 +1,5 @@
 ---
-title: "そのプロンプト、どのプロジェクトに投げるんでしたっけ — 評価モデルで宛先を決める"
+title: "そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう"
 emoji: "🚦"
 type: "tech"
 topics: ["claudecode", "herdr", "aisdk", "typescript", "llm"]
