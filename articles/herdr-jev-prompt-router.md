@@ -140,15 +140,15 @@ herdr('pane', 'send-text', target.pane_id, prompt.replace(/\r?\n/g, ' '));
 herdr('notification', 'show', `-> ${target.label}`, '--sound', 'none');
 ```
 
-`tsx` や `ts-node` は入れていません。Node 23.6 以降は `.mts` の型注釈をフラグなしで剥がして実行できるためです（22.6 に `--experimental-strip-types` 付きで入り、23.6 で既定 ON になりました。22.18 と 24 にも降りています）。
+`tsx` や `ts-node` は入れていません。Node.js 23.6 以降は、`.mts` の型注釈をフラグなしで剥がしてそのまま実行できるからです（この機能は 22.6 に `--experimental-strip-types` フラグ付きで入り、23.6 から既定で有効になりました。22.18 と 24 系にもバックポートされています）。
 
-剥がすだけで、コンパイルではありません。型注釈は同じ長さの空白に置換されるので行も列もずれず、スタックトレースはそのまま `.mts` の行を指します。裏を返すと「消せば JS になる」構文しか扱えず、`enum` や値を持つ `namespace`、パラメータプロパティのように実行時に値を生む構文は `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` で落ちます。今回のスクリプトはどれも使っていないので問題になりません。
+やっているのは剥がすことだけで、コンパイルではありません。型注釈は同じ長さの空白に置き換えられるため行番号も桁位置もずれず、スタックトレースはそのまま `.mts` の行を指します。その代わり、扱えるのは「消せば JS になる」構文だけです。`enum`・値を持つ `namespace`・パラメータプロパティのような、実行時に値を生む構文は `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` で落ちます。今回のスクリプトではどれも使っていないので、問題にはなりません。
 
-`tsconfig.json` も置いていないため、型検査は走っていません。Node は型を読まないので `const x: string = 1` も黙って通ります。型注釈はドキュメント以上の効果を持っていない、という前提のコードです。
+`tsconfig.json` も置いていないので、型検査はどこでも走っていません。Node は型注釈を読まずに捨てるだけなので、`const x: string = 1` と書いても黙って通ります。つまりこのコードの型注釈は、実行時には何の効果も持たない、読み手のためのドキュメントです。
 
 ## ポイント解説
 
-UIですが、Claude Codeの新機能Claude Modsをつかうことも考えましたが、ワークスペースがきりかわったほうがいいのでHerdr連携にしました。Claude Modsだけなら[Cross Sesssion Messaging](https://code.claude.com/docs/en/cross-session-messaging)でプロンプトを送り合うみたいな実装にもできるでしょう。
+UIですが、Claude Codeの新機能[Claude Mods](https://github.com/anthropics/claude-code/issues/91870)をつかうことも考えましたが、ワークスペースがきりかわったほうがいいのでHerdr連携にしました。Claude Modsだけなら[Cross Sesssion Messaging](https://code.claude.com/docs/en/cross-session-messaging)でプロンプトを送り合うみたいな実装にもできるでしょう。
 
 ### 1. herdr の状態を読む
 
