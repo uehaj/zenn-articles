@@ -2,14 +2,14 @@
 title: "そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう"
 emoji: "🚦"
 type: "tech"
-topics: ["claudecode", "herdr", "aisdk", "typescript", "jev"]
+topics: ["claudecode", "herdr", "typesafe", "typescript", "jev"]
 published: true
 ---
 
 :::message
 本記事は筆者個人の見解であり、所属する組織の公式見解ではありません。
 
-また、ここで使う AI SDK の `experimental_evaluate` は名前のとおり experimental な API です。この領域は仕様が頻繁に、かつ大きく変わります。本文の記述は執筆時点(2026年9月, herdr 0.9.0 / ai 7.0.106 / Node v23.10.0 で確認)のものなので、最新の挙動は[公式ドキュメント](https://ai-sdk.dev/docs/ai-sdk-core/evaluation)をご確認ください。
+また、ここで使う TypeSafe の System One API は公開されて間もないものです。この領域は仕様が頻繁に、かつ大きく変わります。本文の記述は執筆時点(2026年9月, herdr 0.9.0 / Node v23.10.0 で確認)のものなので、最新の挙動は[公式ドキュメント](https://docs.typesafe.ai/)をご確認ください。
 :::
 
 ## はじめに
@@ -22,30 +22,36 @@ AI エージェントを複数のプロジェクトで並行して走らせて�
 
 ![herdr のポップアップに出したプロンプトパレット。ここに書くと宛先が自動で決まる (筆者の実行環境のスクリーンショット)](/images/jev-prompt-router-palette.png)
 
-このとき、宛先のワークスペースを判断する必要がありますが、分類タスクですから、いま話題の**意思決定モデル [Jev](https://vercel.com/ai-gateway/models/jev)** を使います。
-
 ## TL;DR
 
-- 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（評価モデル）** に選ばせるルータを書きました。TypeScript で 51 行です。
-- Jev は文章を生成せず、**typed な質問に対して選択肢・スコア・真偽確率だけを返す**モデルです。AI SDK 7 の `experimental_evaluate` から呼べます。
+- 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（System One モデル）** に選ばせるルータを書きました。TypeScript で 64 行、**依存ゼロ**です。
+- Jev は文章を生成せず、**typed な質問に対して選択肢・スコア・真偽確率だけを返す**モデルです。`POST /v1/systemone` を 1 本叩くだけで呼べます。
 - 今回、候補の作り方が肝で、**`criteria` のキーを機械用の ID、値を LLM 用の説明文**にすると、返ってきた答えをそのままキーとして使えます。
 - 最後に Enter は打ちません。**入力欄に文字列を置くだけ**にして、送信するかどうかの判断は人間に残しています。
 
-## なぜ生成モデルではなく評価モデルなのか
+## なぜ生成モデルではなく System One モデルなのか
 
-Jev は 2026年9月16日に Vercel AI Gateway で使えるようになったモデルです。Vercel の changelog では次のように紹介されています。
+Jev は TypeSafe AI の **System One モデル**です。公式ドキュメントでは次のように説明されています。
 
-> a probabilistic decision model for software: state goes in, typed Choice, Score, and Boolean answers come out.
+> Jev evaluates typed *questions* against a *state* and returns structured results directly. No text generation, no parsing. You get typed values and probability distributions that your code can branch on, sort by, and route with.
 
-(仮訳: ソフトウェアのための確率的な意思決定モデル。状態を入れると、型のついた Choice・Score・Boolean の答えが出てくる)
+(仮訳: Jev は state に対して型のついた question を評価し、構造化された結果を直接返す。テキスト生成もパースもない。コードがそのまま分岐・ソート・ルーティングに使える、型のついた値と確率分布が得られる)
 
-出典: [TypeSafe AI's Jev now available on AI Gateway — Vercel Changelog](https://vercel.com/changelog/typesafe-ai-jev-now-available-on-ai-gateway)
+出典: [Introduction — TypeSafe AI](https://docs.typesafe.ai/introduction)
 
-AI Gateway のモデルページによれば、Jev の最大出力トークン数は **0** で、コンテキストウィンドウの欄は「該当なし」です（出典: [Jev — Vercel AI Gateway](https://vercel.com/ai-gateway/models/jev)）。文章を書かないので、出力トークンという概念がそもそもありません。入力の料金は 100 万トークンあたり 0.042 ドルです。
+質問の型は 3 つだけです。選択肢から 1 つ選ぶ `choice`、順序のある段階で採点する `score`、真である確率を返す `noul`。1 回の呼び出しに混ぜて入れられ、それぞれ独立に並列で評価されます。今回使うのは `choice` ひとつです。
 
-分類のためだけに生成モデルを呼ぶと、「JSON で答えて」とプロンプトに書き、返ってきた文字列をパースし、想定外のキーが来たときのリトライを書く、という定型作業がついてきます。評価モデルはその層がまるごと要りません。選択肢の集合を渡せば、その中のどれかが返ってきます。
+ちなみに System One という名前は、ダニエル・カーネマンが『ファスト&スロー』で広めたシステム 1 から来ています（出典: [System One — TypeSafe AI](https://docs.typesafe.ai/concepts/system-one)）。速くて直観的な判断のほう、という含意です。
 
-TypeSafe 社の報告として、Vercel は「自社のワークフロー評価において LLM 比で最大 193.6 倍高速・444.6 倍安価」という数字を紹介しています（同 changelog）。これは同社自身の測定値であり、筆者が検証したものではありません。ただ、今回のような「1 プロンプトにつき 1 回、選択肢 10 個弱から 1 つ選ぶ」規模であれば、速度も費用も気にする水準ではありません。
+分類のためだけに生成モデルを呼ぶと、「JSON で答えて」とプロンプトに書き、返ってきた文字列をパースし、想定外のキーが来たときのリトライを書く、という定型作業がついてきます。System One モデルはその層がまるごと要りません。選択肢の集合を渡せば、その中のどれかが返ってきます。
+
+### Jev を使うには
+
+公式サイト（[typesafe.ai](https://typesafe.ai/)）は早期アクセスのウェイトリストを案内しています。筆者も申し込んでしばらく音沙汰がありませんでしたが、その後アクセスできるようになりました。
+
+利用権さえあれば、あとは短い話です。[コンソール](https://console.typesafe.ai/)にログインしてダッシュボードから API キーを取り、`POST https://api.typesafe.ai/v1/systemone` を叩く。それだけで、SDK も要りません。公式の [Quick start](https://docs.typesafe.ai/introduction/quickstart) では、まず Playground で `state` にテキストを入れて質問を足してみる、という手順が紹介されています。
+
+なお 2026 年 9 月 19 日時点では、トップページが今も "Join Waitlist" と early access を掲げている一方、Quick start のほうは順番待ちに触れず「ログインしてダッシュボードからキーを取る」だけの手順になっています。新規登録がすぐ通るようになったのかどうかは、確かめられていません。
 
 ## 全体の処理フロー
 
@@ -55,8 +61,8 @@ TypeSafe 社の報告として、Vercel は「自社のワークフロー評価�
         ├── herdr agent list ─→ ワークスペースごとに代表ペインを 1 つ選ぶ
         │                        candidates: workspace_id → { pane_id, label }
         ▼
- experimental_evaluate
-   model: 'typesafe-ai/jev'
+ POST api.typesafe.ai/v1/systemone
+   model: 'jev-latest'
    state: プロンプト
    questions.workspace: { type: 'choice', criteria: 候補一覧 }
         │
@@ -70,13 +76,15 @@ TypeSafe 社の報告として、Vercel は「自社のワークフロー評価�
 
 ## コード全文
 
-`route.mts` の全文です。依存は `ai` パッケージ 1 本だけです。
+`route.mts` の全文です。依存はありません。Node の組み込みモジュールと `fetch` だけで動きます。
 
 ```ts
 import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { experimental_evaluate as evaluate } from 'ai';
+
+const apiKey = process.env.TYPESAFE_API_KEY;
+if (!apiKey) throw new Error('TYPESAFE_API_KEY is not set (--env-file?)');
 
 let prompt = process.argv.slice(2).join(' ').trim();
 if (!prompt) {
@@ -101,17 +109,23 @@ for (const a of herdr('agent', 'list').agents) {
   });
 }
 
-const { answers } = await evaluate({
-  model: 'typesafe-ai/jev',
-  state: prompt,
-  questions: {
-    workspace: {
-      type: 'choice',
-      instructions: 'Which project should this prompt be sent to?',
-      criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
+const res = await fetch('https://api.typesafe.ai/v1/systemone', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+  body: JSON.stringify({
+    model: 'jev-latest',
+    state: prompt,
+    questions: {
+      workspace: {
+        type: 'choice',
+        instructions: 'Which project should this prompt be sent to?',
+        criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
+      },
     },
-  },
+  }),
 });
+if (!res.ok) throw new Error(`typesafe ${res.status}: ${await res.text()}`);
+const { answers } = await res.json();
 
 const wid = answers.workspace.choice;
 const target = candidates.get(wid)!;
@@ -126,7 +140,11 @@ herdr('pane', 'send-text', target.pane_id, prompt.replace(/\r?\n/g, ' '));
 herdr('notification', 'show', `-> ${target.label}`, '--sound', 'none');
 ```
 
-`tsx` や `ts-node` は入れていません。`tsconfig.json` も置いていないため、型注釈は実行時に捨てられるだけで型検査は走っていません。
+`tsx` や `ts-node` は入れていません。Node 23.6 以降は `.mts` の型注釈をフラグなしで剥がして実行できるためです（22.6 に `--experimental-strip-types` 付きで入り、23.6 で既定 ON になりました。22.18 と 24 にも降りています）。
+
+剥がすだけで、コンパイルではありません。型注釈は同じ長さの空白に置換されるので行も列もずれず、スタックトレースはそのまま `.mts` の行を指します。裏を返すと「消せば JS になる」構文しか扱えず、`enum` や値を持つ `namespace`、パラメータプロパティのように実行時に値を生む構文は `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` で落ちます。今回のスクリプトはどれも使っていないので問題になりません。
+
+`tsconfig.json` も置いていないため、型検査は走っていません。Node は型を読まないので `const x: string = 1` も黙って通ります。型注釈はドキュメント以上の効果を持っていない、という前提のコードです。
 
 ## ポイント解説
 
@@ -190,18 +208,18 @@ if (candidates.has(a.workspace_id) && a.agent_status === 'working') continue;
 criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
 ```
 
-公式ドキュメントでは `choice` の `criteria` は "A nonempty map of options to descriptions"（仮訳: 選択肢から説明への、空でないマップ）と説明されています（出典: [Evaluation — AI SDK Core](https://ai-sdk.dev/docs/ai-sdk-core/evaluation)）。このキーと値で、役割をきれいに分けられます。
+公式ドキュメントでは `choice` の `criteria` は "The answer options, as a map. Each key is an option name and each value is a description of that option."（仮訳: 答えの選択肢をマップで渡す。キーが選択肢の名前、値がその説明）と説明されています（出典: [Choice — TypeSafe AI](https://docs.typesafe.ai/primitives/choice)）。このキーと値で、役割をきれいに分けられます。
 
 | 位置 | 中身の例 | 役割 |
 |---|---|---|
 | **キー** | `"w68"` などの `workspace_id` | 選択肢の識別子。判定後に `answers.workspace.choice` としてそのまま返る |
 | **値** | `"<project> — エラー切り分け"` | その選択肢の具体的な説明。モデルが読み取るテキスト |
 
-つまりこの 1 行で「**機械が使う ID**」と「**モデルが読む説明**」を同時に渡しています。返ってきた `choice` をそのまま `candidates.get()` のキーにできるので、後段で名前の逆引きをする必要がありません。ID を人間可読な名前にしたい誘惑に駆られますが、その必要はないわけです。
+つまりこの 1 行で「**機械が使う ID**」と「**モデルが読む説明**」を同時に渡しています。返ってきた `choice` をそのまま `candidates.get()` のキーにできるので、後段で名前の逆引きをする必要がありません。ID を人間可読な名前にしたい誘惑に駆られますが、その必要はないわけです。ドキュメントによればキー側もモデルには送られますが、判定材料は値のほうに寄せておけば足ります。
 
-`answers.workspace.probabilities` には全選択肢にわたる確率分布が入ります（プロバイダが対応していれば、という条件付きのオプショナルです）。「w68 が 0.62、w5Q が 0.31」のように**どれくらい迷ったか**が見えるので、stderr に出してルーティングの当たり外れを目視できるようにしています。公式ドキュメントにも、選択された選択肢の確率が十分に高いときだけルーティングする、という条件分岐の例が載っています（出典: [Evaluation — AI SDK Core](https://ai-sdk.dev/docs/ai-sdk-core/evaluation)）。
+`answers.workspace.probabilities` には全選択肢にわたる確率分布が入ります（合計が 1 になります）。「w68 が 0.62、w5Q が 0.31」のように**どれくらい迷ったか**が見えるので、stderr に出してルーティングの当たり外れを目視できるようにしています。答えには確率の散らばり具合から計算した `confidence` も付いてくるので、これが低いときだけ人間に投げる、といった分岐にも使えます（出典: [Confidence-gated routing — TypeSafe AI](https://docs.typesafe.ai/patterns/confidence-routing)）。
 
-なお、`Object.fromEntries` で動的に組んでいるため、TypeScript 上は `criteria` の型が `Record<string, string>` に広がり、`choice` はただの `string` になります。リテラルで書けば `'positive' | 'neutral'` のようなユニオン型に絞られるので、静的な選択肢ならそちらのほうが型の恩恵は大きいです。
+なお今回は HTTP を直接叩いているので、`await res.json()` の戻りは `any` で、`answers.workspace.choice` に型は付きません。型を効かせたいなら公式の [JavaScript SDK](https://docs.typesafe.ai/sdk/javascript) を使う手もありますが、質問 1 つのために依存を 1 本増やすのは割に合わないと判断しました。
 
 ### 4. 改行を潰し、最後の Enter は押さない
 
@@ -246,15 +264,25 @@ exec node --env-file=.env route.mts
 
 引数なしで呼ぶので、必ず対話入力のパスに入ります。ポップアップに `prompt (empty to cancel)> ` が出て、そこに書いて Enter を押すと分類が走る、という流れです。空で Enter を押せば終了コード 2 で抜けます。
 
-`--env-file=.env` は AI Gateway 用の資格情報を読み込むためです。`cd` しているのは `node_modules` と `.env` の解決のため、`exec` は余計なシェルプロセスを残さないためです。
+`--env-file=.env` は `TYPESAFE_API_KEY` を読み込むためです。`cd` しているのは `.env` の解決のため、`exec` は余計なシェルプロセスを残さないためです。
 
 herdr 側の設定は、[以前の記事](https://zenn.dev/uehaj/articles/herdr-devurls-popup)で書いた URL 台帳のポップアップと同じ要領で、`[[keys.command]]` に `type = "popup"` で割り当てています。
+
+## 肝心の精度は
+
+内容による、ですね。分類モデルに渡しているのは前述の `label`、つまり `basename(cwd)` とステータス記号を除いたターミナルタイトルだけです。作業の実体がそこに現れていなければ当たりません。
+
+運用としては、あてはまりそうなキーワードをプロンプトに入れておくことになるでしょう。ただしこれは「正確な名前を思い出せ」という話ではありません。むしろ逆で、こういう入力で通ります。
+
+> えーとあの、なんだっけ、カーネマンのシステム1とかの、それに関係あるやつの、今やってることおしえて
+
+ワークスペース番号もディレクトリ名も思い出さないまま、周辺の連想語だけで宛先が決まります。キーワード一致や正規表現ではこうはいきません。中高年にやさしいシステムになっています。
 
 ## おわりに
 
 「宛先を選ぶ」という操作は、人間にとっては一瞬の判断でも、手を動かすコストが意外に高い部類の作業です。タブを探し、移動し、その間に何を書こうとしていたか思い出す。この往復がなくなるだけで、思いついたことを書き留めるハードルはかなり下がりました。
 
-評価モデルは、こういう「判断そのものは軽いが、ルールとして書き下すのが面倒」な箇所にちょうど合います。生成モデルで同じことをやると、プロンプト・パース・リトライの層が要りますし、選択肢の集合から外れた答えが返る余地も残ります。選択肢を渡して 1 つ返してもらう、という形に落とせる問題なら、こちらのほうが素直です。
+System One モデルは、こういう「判断そのものは軽いが、ルールとして書き下すのが面倒」な箇所にちょうど合います。生成モデルで同じことをやると、プロンプト・パース・リトライの層が要りますし、選択肢の集合から外れた答えが返る余地も残ります。選択肢を渡して 1 つ返してもらう、という形に落とせる問題なら、こちらのほうが素直です。
 
 一方で、精度を前提にした設計にはしていません。確率で選んでいる以上は外れますし、外れたときに自動で走り出すと後始末のほうが高くつきます。だから最後の Enter だけは人間に残す。自動化の線をどこで引くかという話で、今回はここが落としどころでした。
 
