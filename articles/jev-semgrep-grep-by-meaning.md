@@ -400,3 +400,21 @@ API キーは [TypeSafe のコンソール](https://console.typesafe.ai/)で取�
 `-a` や `-v` の組み合わせ方は grep と同じままで、これは Jev が意味ごとに独立した yes/no 確率を返すので、閾値で切った真偽をそのままブール演算できるからです。
 前回の宛先ルーティングは `choice` 1 問、今回は `noul` を行数分並べただけで、どちらも生成モデルなら要るはずのプロンプト設計とパースの層がありません。
 「文章はいらない、判断だけほしい」場面はほかにも転がっていそうなので、見つけたらまた書きます。
+
+## 追記: Claude Code のスキルとしても使えます
+
+semgrep を代わりに走らせてくれる Claude Code のスキルを、[uehaj/skills](https://github.com/uehaj/skills) マーケットプレースの `uehaj` プラグインとして公開しています。探したいものを言葉で書くと、スキルが式を組み立てて検索し、`file:line` 付きで該当行を報告します。
+
+```sh
+claude plugin marketplace add uehaj/skills
+claude plugin install uehaj@uehaj-skills
+```
+
+コマンドラインツールを別途インストールする必要はありません(PATH に `semgrep` が無ければ `npx @uehaj/semgrep` に自動で切り替わります)。必要なのは API キーの設定だけです。あとは Claude Code の中で次のように打ちます。
+
+```
+/uehaj:semgrep 返金を求めている問い合わせ tickets/*.txt
+/uehaj:semgrep 未テストのまま入った修正 git log --oneline -200
+```
+
+このスキルだけ欲しい場合の入れ方も含め、詳細は [README の「Claude Code から使う」](https://github.com/uehaj/jev-semgrep/blob/main/README.ja.md#claude-code-から使う)を参照してください。
