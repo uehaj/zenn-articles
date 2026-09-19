@@ -2,7 +2,7 @@
 title: "Jevのキラーアプリ、「意味で探す grep」を作った"
 emoji: "🔎"
 type: "tech"
-topics: ["typesafe", "jev", "grep", "nodejs", "ai"]
+topics: ["typesafeai", "jev", "grep", "nodejs", "llm"]
 published: true
 ---
 
