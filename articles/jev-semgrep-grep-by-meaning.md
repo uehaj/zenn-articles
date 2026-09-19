@@ -1,5 +1,5 @@
 ---
-title: "正規表現ではなく「意味」で行を探す grep を、Jev の yes/no 確率だけで作る"
+title: "正規表現ではなく「意味」で検索する grep を、Jev で作る"
 emoji: "🔎"
 type: "tech"
 topics: ["typesafe", "jev", "grep", "nodejs", "ai"]
@@ -18,7 +18,7 @@ published: false
 `-e` に「誰かが変装している、または正体を隠している」のような文を書くと、その意味に合う行が出てきます。
 判定には、前回の記事[「そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう」](https://zenn.dev/uehaj/articles/herdr-jev-prompt-router)でも使った [TypeSafe AI](https://typesafe.ai/) の System One モデル [Jev](https://docs.typesafe.ai/models) を使います。
 
-今回作った `semgrep` のソースコードと npm パッケージは、こちらで公開しています。
+今回作った `semgrep` のソースコードと npm パッケージは、こちらで公開しています。文中で使用しているテキストデータ(`tests/` 配下)もこちらにあります。
 
 - GitHub: [uehaj/jev-semgrep](https://github.com/uehaj/jev-semgrep)
 - npm: [@uehaj/semgrep](https://www.npmjs.com/package/@uehaj/semgrep)
@@ -356,7 +356,7 @@ rate limit は同じページに 1 分あたり 1,200 リクエストとあり�
 
 - 空行は API に送らず、すべての意味で確率 0 として扱います。`-v X` には該当し、`-e X` には該当しません。
 - 行は 2,000 文字で切って送ります。
-- 429 と 529 は指数バックオフで 6 回まで再試行します。公式の API リファレンスがこの 2 つのステータスに対して勧めている扱いです (出典: [API reference — TypeSafe AI](https://docs.typesafe.ai/api))。
+- HTTP ステータス 429 (rate limit 超過) と 529 (サーバ側の過負荷) は、待ち時間を倍々に延ばしながら(指数バックオフ) 6 回まで再試行します。公式の API リファレンスがこの 2 つのステータスに対して勧めている扱いです (出典: [API reference — TypeSafe AI](https://docs.typesafe.ai/api))。
 
 ## インストール
 
