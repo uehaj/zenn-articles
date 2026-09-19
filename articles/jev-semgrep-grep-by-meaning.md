@@ -1,5 +1,5 @@
 ---
-title: "正規表現ではなく「意味」で検索する grep を、Jev で作る"
+title: "Jevのキラーアプリ、「意味で探す grep」を作った"
 emoji: "🔎"
 type: "tech"
 topics: ["typesafe", "jev", "grep", "nodejs", "ai"]
@@ -16,6 +16,10 @@ published: false
 
 正規表現ではなく**意味**を渡す grep を作りました。
 `-e` に「誰かが変装している、または正体を隠している」のような文を書くと、その意味に合う行が出てきます。
+
+先日これを X で紹介したところ、ちょっとバズりました。本記事はその解説です。
+
+https://x.com/uehaj/status/2101198713834381716
 判定には、前回の記事[「そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう」](https://zenn.dev/uehaj/articles/herdr-jev-prompt-router)でも使った [TypeSafe AI](https://typesafe.ai/) の System One モデル [Jev](https://docs.typesafe.ai/models) を使います。
 
 今回作った `semgrep` のソースコードと npm パッケージは、こちらで公開しています。文中で使用しているテキストデータ(`tests/` 配下)もこちらにあります。
@@ -215,7 +219,7 @@ $ semgrep -n -e "money or payment is mentioned" -v "the requester is angry or di
                L002_0: { noul: 0.04 }, L002_1: { noul: 0.07 } }
 ```
 
-このように、複数・多数(多種)の質問に、1 リクエストで一撃で回答できることが Jev の本質であり、従来の LLM との機能的な差異の核心です。
+このように、「複数対象」×「多数・多種」の質問にたいして、1 リクエストで一撃で回答できることが Jev の本質であり、従来の LLM との機能的な差異の核心です。
 
 これで得られた確率をどうするかは、もう Jev の仕事ではありません。`semgrep` 側で意味ごとに閾値(既定 0.5)でブール値に変換し、`-e` / `-a` / `-v` で組み立てた式を行ごとに評価して、真になった行だけを grep と同じ体裁で出力します。
 
