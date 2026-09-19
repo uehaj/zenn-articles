@@ -1,5 +1,5 @@
 ---
-title: "正規表現ではなく意味で行を探す grep を、Jev の yes/no 確率だけで作る"
+title: "正規表現ではなく「意味」で行を探す grep を、Jev の yes/no 確率だけで作る"
 emoji: "🔎"
 type: "tech"
 topics: ["typesafe", "jev", "grep", "nodejs", "ai"]
@@ -15,54 +15,119 @@ published: false
 ## はじめに
 
 正規表現ではなく**意味**を渡す grep を作りました。
-`-e` に「顧客が怒っている、または不満を持っている」のような文を書くと、その意味に合う行が出てきます。
-判定には、前回の記事[「そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう」](https://zenn.dev/uehaj/articles/herdr-jev-prompt-router)でも使った TypeSafe AI の System One モデル Jev を使います。
+`-e` に「誰かが変装している、または正体を隠している」のような文を書くと、その意味に合う行が出てきます。
+判定には、前回の記事[「そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう」](https://zenn.dev/uehaj/articles/herdr-jev-prompt-router)でも使った [TypeSafe AI](https://typesafe.ai/) の System One モデル [Jev](https://docs.typesafe.ai/models) を使います。
 
-リポジトリ: <https://github.com/uehaj/jev-semgrep>
-npm: [@uehaj/semgrep](https://www.npmjs.com/package/@uehaj/semgrep)
+今回作った `semgrep` のソースコードと npm パッケージは、こちらで公開しています。
+
+- GitHub: [uehaj/jev-semgrep](https://github.com/uehaj/jev-semgrep)
+- npm: [@uehaj/semgrep](https://www.npmjs.com/package/@uehaj/semgrep)
 
 ## TL;DR
 
-- 意味で行を探す grep `semgrep` を作りました。Node.js 20.12 以降で動く 1 ファイル、依存ゼロです。
-- 1 行ごとに Jev へ「この行は『X』という意味に合うか」を yes/no 確率で聞き、閾値で切ります。文章生成もパースもありません。
-- 意味と本文の言語は違っていて構いません。日本語で書いた意味 1 つで、フランス語、ロシア語、ドイツ語、スペイン語、中国語、韓国語の行が見つかります。
-- 意味ごとに独立した確率が返るので、AND / OR / NOT がそのままブール演算になります。ベクトル検索との違いはここです。
-- 検索した行はすべて TypeSafe の API に送られます。手元で完結する grep とは前提が違うので、その注意も書きます。
-
-なお、名前が静的解析ツールの [Semgrep](https://semgrep.dev/) と衝突しています。両方使う方はどちらかを改名してください。
+- **1 ファイル、依存ゼロ**：意味で行を探す grep `semgrep` を作りました。Node.js 20.12 以降で動きます。
+- **文章生成もパースもなし**：1 行ごとに Jev へ「この行は『X』という意味に合うか」を yes/no 確率で聞き、閾値で切ります。
+- **言語をまたぐ**：意味と本文の言語は違っていて構いません。日本語で書いた意味 1 つで、フランス語、ロシア語、ドイツ語、スペイン語、中国語、韓国語の行が見つかります。
+- **AND / OR / NOT がそのまま使える**：意味ごとに独立した確率が返るので、ブール演算になります。ベクトル検索との違いはここです。
+- **送信データの注意**：検索した行はすべて TypeSafe の API に送られます。手元で完結する grep とは前提が違います。
 
 ## 何ができるか
 
-`tests/corpus.txt` は、サーバログ、英語と日本語の問い合わせ、ソースコード、SQL、雑談が混ざった 51 行のファイルです。
-これに英語の意味を当てると、日本語の行も含めて 5 行が出ます。
+ここからは検索の例を示します。まず、検索対象のテキストファイルを次のように準備します。`tests/fairy.txt` は、昔話や童話の一場面を 1 行ずつ書いた 16 行のファイルです(筆者による要約文で、日本語のほかドイツ語・フランス語・英語の行が混ざっています)。
 
-```sh
-$ semgrep -n -e "customer is angry or frustrated" tests/corpus.txt
-14:ユーザー山田さんからの問い合わせ: 返金してほしい、商品が壊れていた
-16:ユーザー佐藤さんからの問い合わせ: 注文した覚えのない請求が来ています。至急確認してください
-18:I want my money back. The item arrived broken and customer service ignored me.
-21:Your product ruined my weekend. Never buying from you again.
-23:This is the third time I'm writing. Nobody has replied to my previous emails.
-5/51 lines, 2 requests, 3225 input tokens
+```
+桃太郎は犬と猿とキジにきびだんごを与えて家来にした
+狼はおばあさんを飲み込むと、その帽子を深くかぶってベッドに横たわり、赤ずきんを待った
+「おばあさんのお耳はどうしてそんなに大きいの?」と赤ずきんはたずねた
+女王は行商人の老婆に身をやつし、毒リンゴを白雪姫に差し出した
+灰まみれの娘は、誰にも名乗らぬまま舞踏会で王子と踊り、真夜中の鐘とともに走り去った
+浦島太郎は玉手箱を開け、たちまち白髪の老人になった
+羊飼いの少年は「狼が来た」と叫んだが、それは嘘だった
+かぐや姫は自分が月の都の者であることを、育ての翁についに打ち明けた
+三匹の子豚の末の弟は、レンガで家を建てた
+Der Wolf setzte Großmutters Haube auf und legte sich in ihr Bett.
+Cendrillon s'enfuit à minuit, laissant une pantoufle de verre sur les marches du palais.
+The emperor walked in the procession wearing nothing at all, yet everyone praised his new clothes.
+一寸法師は針の刀を腰に差し、お椀の舟で川を下った
+アリは夏のあいだせっせと働き、キリギリスは歌って過ごした
+鶴は「機を織るあいだ、決して覗かないでください」と言い、夜ごと戸を閉てた
+おむすびころりん、すっとんとん
 ```
 
-どの行にも angry や frustrated という語はありません。
-最後の 1 行は端末に出したときだけ付く集計で、パイプに流すときは出ません。
+### 「変装している、または正体を隠している」行を探す
 
-### 言語をまたいで探せる
-
-Jev は語ではなく概念を照合するので、意味と本文の言語が一致していなくてもよいです。
-`tests/multi.txt` は、フランス語、ロシア語、ドイツ語、スペイン語、中国語、韓国語の 6 言語で書いた返金要求と感謝の文を交互に並べたファイルです。
-日本語の意味 1 つで、返金要求の 6 行だけが出ます。
+この 16 行を「誰かが変装している、または正体を隠している」という意味で検索します。
 
 ```sh
-$ semgrep -n -p -e "顧客が返金を求めている" tests/multi.txt
-1:Je veux être remboursé, le produit est arrivé cassé.	[0.98]
-3:Я требую вернуть деньги, товар не работает.	[0.97]
-5:Ich möchte mein Geld zurück, das Gerät ist defekt.	[0.97]
-7:Quiero un reembolso, el paquete llegó vacío.	[0.97]
-9:我要求退款，商品坏了。	[0.97]
-11:환불해 주세요. 제품이 고장났어요.	[0.97]
+$ semgrep -n -e "someone is disguising themselves or hiding their true identity" tests/fairy.txt
+2:狼はおばあさんを飲み込むと、その帽子を深くかぶってベッドに横たわり、赤ずきんを待った
+4:女王は行商人の老婆に身をやつし、毒リンゴを白雪姫に差し出した
+5:灰まみれの娘は、誰にも名乗らぬまま舞踏会で王子と踊り、真夜中の鐘とともに走り去った
+10:Der Wolf setzte Großmutters Haube auf und legte sich in ihr Bett.
+4/16 lines (16 sent), 1 requests, 1353 input tokens
+```
+
+どの行にも「変装」「正体」にあたる語はありません。赤ずきんの狼は日本語の行(2)とグリム原文風のドイツ語の行(10)が同時に出ています。
+最後の 1 行は端末に出したときだけ付く集計で、パイプに流すときは出ません。
+
+### 冒険者の掲示板から「危険のわりに報酬が安すぎる」依頼を探す
+
+もう 1 つ、以下のファイルから検索する例です。`tests/guild.txt` は、冒険者ギルドの依頼掲示板を模した 12 行です。
+
+```
+【討伐】村はずれの洞窟にゴブリンが住み着いた。報酬は銀貨20枚。討伐証明を持参のこと
+【苦情】先日届いた薬草がしおれていた。金を返してほしい。二度とこのギルドには頼まない
+【護衛】商隊を隣町まで。夜盗が出るため腕利きを希望。報酬は応相談
+【採取】満月の夜にだけ咲く月光草を10本。受注時に前金で金貨1枚を支払う
+【討伐】ドラゴン退治。報酬は銅貨5枚
+【感謝】息子を助けてくれた冒険者様、本当にありがとうございました。パンを焼いてお待ちしています
+【急募】井戸に落ちた指輪を今夜中に拾ってほしい。ただの古い指輪だが、どうしても必要なのだ
+Recherche mage de feu pour escorter une caravane. Paiement d'avance : 30 pièces d'or.
+【苦情】護衛に雇った剣士が夜番のあいだ居眠りしていた。報酬の返還を求める
+Es wird ein Alchemist gesucht. Die Bezahlung erfolgt erst nach der Lieferung.
+【売却】ミスリルの鎧、ほぼ新品。値札どおり、値引き交渉には応じない
+【依頼】亡き妻が好きだった花を、山頂から一輪だけ摘んできてほしい。礼は少ないが誠意を尽くす
+```
+
+これを「危険のわりに報酬が安すぎる」という意味で検索します。
+
+```sh
+$ semgrep -n -p -e "the reward is far too low for the danger involved" tests/guild.txt
+5:【討伐】ドラゴン退治。報酬は銅貨5枚	[0.86]
+```
+
+「ドラゴンは危険」で「銅貨 5 枚は安すぎる」という、書かれていない世界知識を使った判定です。銀貨 20 枚のゴブリン討伐(1 行目)は出ません。この種の条件は正規表現では原理的に書けません。
+
+### 「報酬の返還を求めている」依頼主を 6 言語から探す
+
+Jev は語ではなく概念を照合するので、意味と本文の言語が一致していなくてもよいです。
+`tests/guild-multi.txt` は、フランス語、ロシア語、ドイツ語、スペイン語、中国語、韓国語の 6 言語で書いた「報酬を返せ」という苦情と感謝の手紙を交互に並べたファイルです。
+
+```
+Je demande la restitution de la récompense : le garde engagé dormait pendant sa ronde.
+Merci mille fois, aventurier. Le village est enfin en paix.
+Требую вернуть плату: наёмник сбежал при виде гоблинов.
+Спасибо вам, герой. Урожай спасён.
+Ich verlange die Rückzahlung des Lohns. Der Trank hat nicht gewirkt.
+Vielen Dank, tapferer Held. Der Drache ist fort.
+Exijo la devolución de la recompensa: el mapa que compré era falso.
+Gracias, valiente aventurero. Mi hija volvió sana y salva.
+我要求退还报酬，护卫在半路就跑了。
+谢谢你，勇敢的冒险者。村庄得救了。
+보수를 돌려주십시오. 호위병이 야간 경비 중에 잠들어 있었습니다.
+고맙습니다, 용사님. 덕분에 마을이 평화로워졌습니다.
+```
+
+日本語の意味 1 つで、苦情の 6 行だけが出ます。
+
+```sh
+$ semgrep -n -p -e "依頼主が報酬の返還を求めている" tests/guild-multi.txt
+1:Je demande la restitution de la récompense : le garde engagé dormait pendant sa ronde.	[0.96]
+3:Требую вернуть плату: наёмник сбежал при виде гоблинов.	[0.96]
+5:Ich verlange die Rückzahlung des Lohns. Der Trank hat nicht gewirkt.	[0.95]
+7:Exijo la devolución de la recompensa: el mapa que compré era falso.	[0.95]
+9:我要求退还报酬，护卫在半路就跑了。	[0.96]
+11:보수를 돌려주십시오. 호위병이 야간 경비 중에 잠들어 있었습니다.	[0.95]
 ```
 
 `-p` を付けると、意味ごとの確率が行末に出ます。
@@ -77,33 +142,42 @@ $ semgrep -n -p -e "顧客が返金を求めている" tests/multi.txt
 `-e` を複数書くと OR、`-a` で直前の項に AND、`-v` で AND NOT を付けます。
 先頭に `-v` だけ書くと `grep -v` と同じ単独の否定です。
 
-| コマンド | 意味 |
-|---|---|
-| `-e A -e B` | A or B |
-| `-e A -a B` | A and B |
-| `-e A -v B` | A and not B |
-| `-e A -a B -v C -e D` | (A and B and not C) or D |
-| `-v B` | not B |
+| コマンド | 論理 | 説明 |
+|---|---|---|
+| `-e A -e B` | OR | A または B |
+| `-e A -a B` | AND | A かつ B |
+| `-e A -v B` | AND NOT | A かつ B ではない |
+| `-e A -a B -v C -e D` | 複合 | (A and B and not C) or D |
+| `-v B` | NOT | B ではない行（単独の否定） |
 
-ネットワーク障害のうち、再試行の行を除く例です。
+掲示板から、護衛の依頼のうち報酬額がはっきりしないものを探す例です。
 
 ```sh
-$ semgrep -n -e "network or remote connection failure" -v "a retry is happening or was attempted" tests/corpus.txt
-4:2026-09-19 08:02:30 ERROR connection reset by peer while calling payment-gateway
-6:2026-09-19 08:02:35 ERROR timeout after 5000ms waiting for payment-gateway
-9:2026-09-19 08:10:44 ERROR DNS lookup failed for api.example.com
-11:2026-09-19 09:00:00 ERROR SSL handshake failed: certificate expired
-13:network unreachable: no route to host 10.0.0.5
-30:except ConnectionError as e:
-31:    logger.error("upstream unreachable: %s", e)
+$ semgrep -n -e "an escort job is requested" -a "the amount of the reward is not clearly stated" tests/guild.txt
+3:【護衛】商隊を隣町まで。夜盗が出るため腕利きを希望。報酬は応相談
 ```
 
-5 行目の `retrying payment-gateway request (attempt 2/3)` はネットワーク障害の意味には合いますが、`-v` で落ちています。
-Python の `except ConnectionError` が拾われているのは、正規表現の grep では出てこない結果です。
+フランス語の護衛依頼(8 行目)は「Paiement d'avance : 30 pièces d'or(前払いで金貨 30 枚)」と額が明示されているため、2 つ目の意味が 0.05 となり落ちます。「応相談」が「額がはっきりしない」に該当する、という判定も語の一致ではありません。
+
+`-v` の例です。金銭に触れている依頼から、苦情を除きます。
+
+```sh
+$ semgrep -n -e "money or payment is mentioned" -v "the requester is angry or dissatisfied" tests/guild.txt
+1:【討伐】村はずれの洞窟にゴブリンが住み着いた。報酬は銀貨20枚。討伐証明を持参のこと
+3:【護衛】商隊を隣町まで。夜盗が出るため腕利きを希望。報酬は応相談
+4:【採取】満月の夜にだけ咲く月光草を10本。受注時に前金で金貨1枚を支払う
+5:【討伐】ドラゴン退治。報酬は銅貨5枚
+8:Recherche mage de feu pour escorter une caravane. Paiement d'avance : 30 pièces d'or.
+10:Es wird ein Alchemist gesucht. Die Bezahlung erfolgt erst nach der Lieferung.
+11:【売却】ミスリルの鎧、ほぼ新品。値札どおり、値引き交渉には応じない
+12:【依頼】亡き妻が好きだった花を、山頂から一輪だけ摘んできてほしい。礼は少ないが誠意を尽くす
+```
+
+「金を返してほしい」「報酬の返還を求める」という 2 件の苦情は、金銭の話でありながら `-v` で落ちています。
 
 ## 仕組み
 
-前回の記事では、質問の型のうち選択肢から 1 つ選ぶ `choice` を使いました。
+前回の記事では、Jev への質問の型のうち、選択肢から 1 つ選ぶ `choice` を使いました。
 今回は、yes である確率を返す `noul` だけを使います。
 公式ドキュメントの定義は次のとおりです。
 
@@ -113,7 +187,38 @@ Python の `except ConnectionError` が拾われているのは、正規表現�
 
 出典: [Noul — TypeSafe AI](https://docs.typesafe.ai/primitives/noul)
 
-`semgrep` がやっていることは、この `noul` を「行 × 意味」の数だけ 1 リクエストに詰めることです。
+`semgrep` がやっていることは、すべての行とすべての指定された意味のマトリックス(全組み合わせ)を作り、その 1 マスを 1 つの `noul` の質問として、まとめて 1 リクエストに詰めることです。
+
+このとき各質問は、`type: 'noul'` のように**期待する回答の型**を宣言しています。生成モデルに「JSON で答えて」と頼んでパースするのではなく、回答の形(noul なら「yes である確率」という数値 1 つ、前回使った choice なら「選択肢のうちの 1 つ」)がスキーマとして最初から決まっていて、レスポンスにはその型の値だけが返ります。
+
+たとえば 3 行のファイルを 2 つの意味で検索するときは、次の形になります。行を `state`、3 × 2 = 6 個の `noul` を `questions` としてリクエストに入れると、レスポンスの `answers` に確率が 6 個返ります。
+
+```
+コマンドライン:
+  semgrep -e "意味0" -e "意味1" 3行のファイル.txt
+
+リクエスト:
+  state:     { L000: "1行目", L001: "2行目", L002: "3行目" }
+  questions: { L000_0: { type: "noul", instructions: "L000 は意味0に合うか" },
+               L000_1: { type: "noul", instructions: "L000 は意味1に合うか" },
+               L001_0: { type: "noul", instructions: "L001 は意味0に合うか" },
+               L001_1: { type: "noul", instructions: "L001 は意味1に合うか" },
+               L002_0: { type: "noul", instructions: "L002 は意味0に合うか" },
+               L002_1: { type: "noul", instructions: "L002 は意味1に合うか" } }
+
+期待する回答のかたち (各質問の type: "noul" が宣言している):
+  質問 1 つにつき { noul: <0〜1 の数値> } が 1 つ。yes である確率で、文章は返らない
+
+レスポンス:
+  answers:   { L000_0: { noul: 0.93 }, L000_1: { noul: 0.08 },
+               L001_0: { noul: 0.12 }, L001_1: { noul: 0.96 },
+               L002_0: { noul: 0.04 }, L002_1: { noul: 0.07 } }
+```
+
+このように、複数・多数(多種)の質問に、1 リクエストで一撃で回答できることが Jev の本質であり、従来の LLM との機能的な差異の核心です。
+
+これで得られた確率をどうするかは、もう Jev の仕事ではありません。`semgrep` 側で意味ごとに閾値(既定 0.5)でブール値に変換し、`-e` / `-a` / `-v` で組み立てた式を行ごとに評価して、真になった行だけを grep と同じ体裁で出力します。
+
 本体 300 行ほどのうち、API を叩く部分はこれだけです。
 
 ```js
@@ -121,6 +226,7 @@ async function evaluate(chunk) {
   const id = i => `L${String(i).padStart(3, '0')}`;
   const state = Object.fromEntries(chunk.map((l, i) => [id(i), l.text.slice(0, 2000)]));
   const questions = {};
+  // 行 × 意味の組み合わせごとに noul の質問を作る
   chunk.forEach((_, i) => meanings.forEach((text, m) => {
     questions[`${id(i)}_${m}`] = { type: 'noul', instructions: `Does line ${id(i)} match the meaning: "${text}"?` };
   }));
@@ -153,55 +259,60 @@ async function evaluate(chunk) {
 
 ## ベクトル検索と何が違うのか
 
-「X に関係のある行」が欲しいだけなら、埋め込みのコサイン類似度でも似た行が出ます。
-違うのは判定の中身です。
-`semgrep` は話題の近さではなく、その行について**命題が成り立つか**を判定します。
-質問は行と同じリクエストで渡され、確率は両方を見たうえで計算されるので、誰が何をしたか、否定、「求めている」のか「済んだ」のかで答えが変わります。
-行の埋め込みは質問を見る前に固定されるので、測れるのは話題の近さまでです。
+「X に関係のある行」が欲しいだけなら、ベクトル検索(埋め込みのコサイン類似度)でも似た行は出ます。違うのは判定の中身です。
 
-次の 6 行はどれも「返金の話」ですが、顧客が返金を求めているのは 2 行だけです。
+ベクトル検索では、まず各行を埋め込み(意味を数値の列にしたベクトル)へ変換し、索引として保存しておきます。この変換は、どんな質問が来るかを知らない時点で行われ、以後は固定です。検索するときは質問の側も同じ形のベクトルにして、行のベクトルとの近さを測ります。行の側は質問に合わせて解釈し直されないので、測れるのは「話題が近いか」までです。
+
+`semgrep` はこの索引を作りません。行と質問を同じ 1 つのリクエストで Jev に渡し、Jev は質問を読んだうえでその行を評価します。だから「誰が何をしたか」「否定かどうか」「求めているのか、済んだのか」で答えが変わる、**命題が成り立つかどうか**の判定になります。索引が要らないので目の前のファイルにその場で使えます。その裏返しとして、問い合わせのたびにコーパス全体分の入力トークンを払うので、同じ大きなコーパスに何度も問い合わせるなら、索引を一度作って使い回すベクトル検索のほうが安くて速くなります。
+
+### 「変装している、または正体を隠している」のは誰か
+
+次の 6 行はどれも「正体」や「嘘」の話題ですが、この命題が成り立つのは 2 行だけです。
 `-t 0` で閾値を外し、全行の確率を出しています。
 
 ```sh
-$ semgrep -n -p -t 0 -e "customer is asking for a refund" tests/contrast.txt
-1:返金してほしい。商品が壊れていた	[0.98]
-2:返金処理が完了しましたのでご確認ください	[0.10]
-3:当社の返金ポリシーは購入後30日以内です	[0.10]
-4:The manager denied the refund request yesterday	[0.17]
-5:I demand a full refund immediately	[0.94]
-6:Refunds are processed within 5 business days	[0.08]
+$ semgrep -n -p -t 0 -e "someone is disguising themselves or hiding their true identity" tests/fairy-contrast.txt
+1:女王は行商人の老婆に身をやつし、毒リンゴを白雪姫に差し出した	[0.98]
+2:灰まみれの娘は、誰にも名乗らぬまま舞踏会で王子と踊り、真夜中の鐘とともに走り去った	[0.83]
+3:The emperor walked in the procession wearing nothing at all, yet everyone praised his new clothes.	[0.17]
+4:羊飼いの少年は「狼が来た」と叫んだが、それは嘘だった	[0.13]
+5:かぐや姫は自分が月の都の者であることを、育ての翁についに打ち明けた	[0.47]
+6:鶴は「機を織るあいだ、決して覗かないでください」と言い、夜ごと戸を閉てた	[0.43]
 ```
+
+裸の王様(3)は偽りの話ですが、王様は偽っているのではなく騙されている側なので低く出ます。オオカミ少年(4)は嘘をついていますが変装ではありません。かぐや姫(5)は正体を「打ち明けた」、つまり隠すのをやめた行なので、命題としては裏返っています。話題の近さで測るとどれも「正体・嘘」の同じあたりに固まる行たちです。
+
+### 「変装しているが、悪意はない」のは誰か
 
 意味ごとに独立した確率が出るので、AND と NOT は集合の引き算や「否定クエリ」の工夫ではなく、ただのブール演算です。
 
 ```sh
-# 返金の話だが、顧客が求めているのではない → 完了報告、ポリシー、却下、日数
-$ semgrep -n -e "about a refund" -v "the customer is asking for a refund" tests/contrast.txt
-2:返金処理が完了しましたのでご確認ください
-3:当社の返金ポリシーは購入後30日以内です
-4:The manager denied the refund request yesterday
-6:Refunds are processed within 5 business days
-
-# 怒っている、かつ、それが顧客であってスタッフではない
-$ semgrep -n -e "someone is angry" -a "the customer, not the staff, is the one acting" tests/contrast.txt
-5:I demand a full refund immediately
-8:顧客が怒って電話を切った
+# 変装しているが、悪意はない → シンデレラだけが残る
+$ semgrep -n -e "someone is disguising themselves or hiding their true identity" -v "there is malicious or harmful intent" tests/fairy-contrast.txt
+2:灰まみれの娘は、誰にも名乗らぬまま舞踏会で王子と踊り、真夜中の鐘とともに走り去った
 ```
 
-7 行目の `カスタマーサポート担当者が怒って電話を切った` は、2 つ目の意味で 0.05 となり除外されます。
-8 行目と語彙はほぼ同じで、主語だけが違う行です。
+毒リンゴの女王(1)は変装 0.98 ですが、悪意の側で落ちます。語彙ではなく、誰が何のためにしているかで切れています。
 
-実用上の帰結が 2 つあります。
+実用上の帰結があります。
 公式ドキュメントによれば、較正とは、ある確率を割り当てた事象がその割合で実際に起こることで、これによって不確かさをソフトウェアが扱えるようになります (出典: [Machine learning primer — TypeSafe AI](https://docs.typesafe.ai/introduction/machine-learning-primer))。
 確率がその意味で較正されているので、閾値 0.5 をどの質問にもそのまま使えます。
 コサイン類似度では top-k か質問ごとの閾値調整が要ります。
-もう 1 つは、索引を作らないので目の前のファイルにそのまま当てられることです。
-裏返すと問い合わせのたびにコーパス全体分を払うので、同じ大きなコーパスに何度も問い合わせるならベクトル索引のほうが安くて速いです。
+
+
+| 比較項目 | ベクトル検索 | semgrep (Jev の noul) |
+|---|---|---|
+| 判定の基準 | 話題の近さ（類似度） | 命題が成り立つ確率 |
+| 否定や複合条件 | 類似度の演算では表しにくい | AND / OR / NOT をそのまま評価 |
+| 事前の索引 | 必要（埋め込みを作る） | 不要（目の前のファイルをその場で検索） |
+| 費用の構造 | 索引作成が高く、検索は安い | 問い合わせごとに全行分を払う |
+
+固定された大きな文書群に繰り返し問い合わせるならベクトル検索、手元のログやファイルをその場で意味の条件で絞るなら `semgrep` が向いています。
 
 ## 閾値の調整
 
 確率は実行のたびに 0.05 程度ぶれます。
-閾値は肯定側 `-t` と否定側 `-T` の 2 つで、`-t 0.6 -T 0.4` なら 0.4 から 0.6 の行は「X」にも「not X」にも当たりません。
+閾値は肯定側 `-t` と否定側 `-T` の 2 つで、`-t 0.6 -T 0.4` なら 0.4 から 0.6 の行は「X」にも「not X」にも該当しません。
 `--level loose` / `normal` / `strict` で両方をまとめて動かせます。
 
 端末では `-p` の確率に色が付きます。
@@ -209,13 +320,12 @@ $ semgrep -n -e "someone is angry" -a "the customer, not the staff, is the one a
 
 ![semgrep の色付き出力。行番号は緑、確率は閾値に応じて緑または赤 (筆者の実行環境のスクリーンショット)](/images/semgrep-color.png)
 
-ネットワーク障害の意味で、`retrying` の行が 0.73、`except ConnectionError` が 0.61 と、正解の行より低めに出ているのが読み取れます。
-`--level strict` (`-t 0.7`) にすると 0.61 の行は落ち、0.73 の行は残ります。
+閾値の意味は、さきほどの童話の対照実験がそのまま教材になります。かぐや姫 0.47 と鶴 0.43 は、既定の閾値 0.5 のすぐ下です。かぐや姫が低いのは「打ち明けた」が隠すのをやめた行為だからで妥当ですが、鶴は物語を知っていれば変装の場面です。1 行だけでは「覗くな」の理由まで分からないので、確率が境界に張り付きます。この 2 行は実行ごとのぶれで閾値をまたぐことがある、という距離感です。
 
 ## 精度をどう測ったか
 
 「意味に合う行」の正解は人手で決めるしかないので、判定役に Claude を使う LLM-as-judge のテストを書きました。
-10 個の検索式を 51 行のコーパスに当て、行ごとの真偽を `claude -p` に判定させ、その真偽で AND / OR / NOT の式を評価したものを正解として `semgrep` の出力と比べます。
+10 個の検索式を、ログ・問い合わせ・コード・雑談が混ざった 51 行のコーパス(`tests/corpus.txt`)に対して実行し、行ごとの真偽を `claude -p` に判定させ、その真偽で AND / OR / NOT の式を評価したものを正解として `semgrep` の出力と比べます。
 判定結果は JSON にキャッシュするので、2 回目以降は判定役を呼びません。
 
 2026 年 9 月 19 日の実行では、既定の閾値で precision 0.94、recall 0.98 でした。
@@ -244,7 +354,7 @@ rate limit は同じページに 1 分あたり 1,200 リクエストとあり�
 
 ### そのほかの制約
 
-- 空行は API に送らず、すべての意味で確率 0 として扱います。`-v X` には当たり、`-e X` には当たりません。
+- 空行は API に送らず、すべての意味で確率 0 として扱います。`-v X` には該当し、`-e X` には該当しません。
 - 行は 2,000 文字で切って送ります。
 - 429 と 529 は指数バックオフで 6 回まで再試行します。公式の API リファレンスがこの 2 つのステータスに対して勧めている扱いです (出典: [API reference — TypeSafe AI](https://docs.typesafe.ai/api))。
 
@@ -253,12 +363,16 @@ rate limit は同じページに 1 分あたり 1,200 リクエストとあり�
 Node.js 20.12 以降が要ります。
 
 ```sh
+# グローバルインストール
 npm install -g @uehaj/semgrep
+
+# ヘルプの表示 (LANG が ja で始まっていれば日本語)
 semgrep --help
 ```
 
+### API キーの設定
+
 API キーは [TypeSafe のコンソール](https://console.typesafe.ai/)で取得し、環境変数 `TYPESAFE_API_KEY`、または `./.env` か `~/.config/semgrep/.env` に置きます。
-`--help` は `LANG` が `ja` で始まっていれば日本語で出ます。
 
 ## おわりに
 
