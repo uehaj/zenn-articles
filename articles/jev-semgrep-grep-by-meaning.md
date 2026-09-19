@@ -3,7 +3,7 @@ title: "Jevのキラーアプリ、「意味で探す grep」を作った"
 emoji: "🔎"
 type: "tech"
 topics: ["typesafe", "jev", "grep", "nodejs", "ai"]
-published: false
+published: true
 ---
 
 :::message
@@ -14,7 +14,7 @@ published: false
 
 ## はじめに
 
-正規表現ではなく**意味**を渡す grep を作りました。
+正規表現ではなく**意味**を渡す grep を、Jev で作りました。
 `-e` に「誰かが変装している、または正体を隠している」のような文を書くと、その意味に合う行が出てきます。
 
 先日これを X で紹介したところ、ちょっとバズりました。本記事はその解説です。
@@ -22,17 +22,19 @@ published: false
 https://x.com/uehaj/status/2101198713834381716
 判定には、前回の記事[「そのプロンプト、どのプロジェクトに投げるんでしたっけ — そうだ、Jevで宛先を決めよう」](https://zenn.dev/uehaj/articles/herdr-jev-prompt-router)でも使った [TypeSafe AI](https://typesafe.ai/) の System One モデル [Jev](https://docs.typesafe.ai/models) を使います。
 
-今回作った `semgrep` のソースコードと npm パッケージは、こちらで公開しています。文中で使用しているテキストデータ(`tests/` 配下)もこちらにあります。
+今回作った `semgrep` のソースコードと、npx で実行できる npm パッケージは、こちらで公開しています。文中で使用しているテキストデータ(`tests/` 配下)もこちらにあります。
 
 - GitHub: [uehaj/jev-semgrep](https://github.com/uehaj/jev-semgrep)
 - npm: [@uehaj/semgrep](https://www.npmjs.com/package/@uehaj/semgrep)
+
+なお、本ツールは静的解析ツールの [Semgrep](https://semgrep.dev/)(Semgrep, Inc. の製品)とは無関係です。
 
 ## TL;DR
 
 - **1 ファイル、依存ゼロ**：意味で行を探す grep `semgrep` を作りました。Node.js 20.12 以降で動きます。
 - **文章生成もパースもなし**：1 行ごとに Jev へ「この行は『X』という意味に合うか」を yes/no 確率で聞き、閾値で切ります。
 - **言語をまたぐ**：意味と本文の言語は違っていて構いません。日本語で書いた意味 1 つで、フランス語、ロシア語、ドイツ語、スペイン語、中国語、韓国語の行が見つかります。
-- **AND / OR / NOT がそのまま使える**：意味ごとに独立した確率が返るので、ブール演算になります。ベクトル検索との違いはここです。
+- **AND / OR / NOT が使える**: 類似度ではなく命題を検索することができ、複合論理演算もできます。ベクトル検索との違いはここです。
 - **送信データの注意**：検索した行はすべて TypeSafe の API に送られます。手元で完結する grep とは前提が違います。
 
 ## 何ができるか
