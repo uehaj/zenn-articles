@@ -413,11 +413,11 @@ API キーは [TypeSafe のコンソール](https://console.typesafe.ai/)で取�
 
 ## 追記: Claude Code のスキルとしても使えます
 
-semgrep を代わりに走らせてくれる Claude Code のスキルを、[uehaj/skills](https://github.com/uehaj/skills) マーケットプレースの `uehaj` プラグインとして公開しています。探したいものを言葉で書くと、スキルが式を組み立てて検索し、`file:line` 付きで該当行を報告します。
+semgrep を代わりに走らせてくれる Claude Code のスキルを、[uehaj/uehaj-marketplace](https://github.com/uehaj/uehaj-marketplace) マーケットプレースの `uehaj` プラグインとして公開しています。探したいものを言葉で書くと、スキルが式を組み立てて検索し、`file:line` 付きで該当行を報告します。
 
 ```sh
-claude plugin marketplace add uehaj/skills
-claude plugin install uehaj@uehaj-skills
+claude plugin marketplace add uehaj/uehaj-marketplace
+claude plugin install uehaj@uehaj-marketplace
 ```
 
 コマンドラインツールを別途インストールする必要はありません(PATH に `semgrep` が無ければ `npx @uehaj/semgrep` に自動で切り替わります)。必要なのは API キーの設定だけです。あとは Claude Code の中で次のように打ちます。
