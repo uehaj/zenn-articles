@@ -24,7 +24,7 @@ AI エージェントを複数のプロジェクトで並行して走らせて�
 
 ## TL;DR
 
-- 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（System One モデル）** に選ばせるルータを書きました。TypeScript で 273 行、**依存ゼロ**です。
+- 複数の herdr ワークスペースのうち、どこに送るべきかを **TypeSafe AI の Jev（System One モデル）** に選ばせるルータを書きました。TypeScript で 343 行、**依存ゼロ**です。
 - Jev は文章を生成せず、**typed な質問に対して選択肢・スコア・真偽確率だけを返す**モデルです。`POST /v1/systemone` を 1 本叩くだけで呼べます。
 - 今回、候補の作り方が肝で、**`criteria` のキーを機械用の ID、値を LLM 用の説明文**にすると、返ってきた答えをそのままキーとして使えます。
 - 最後に Enter は打ちません。**入力欄に文字列を置くだけ**にして、送信するかどうかの判断は人間に残しています。
@@ -82,7 +82,8 @@ Jev は TypeSafe AI の **System One モデル**です。公式ドキュメン�
 ```ts
 import { execFileSync } from 'node:child_process';
 import {
-  closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync,
+  closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync,
+  statSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -101,8 +102,11 @@ if (!prompt) {
 }
 if (!prompt) process.exit(2);
 
+// herdr hands plugins the running binary's path; PATH may hold a different one.
+const HERDR = process.env.HERDR_BIN_PATH || 'herdr';
+
 const herdr = (...args: string[]) => {
-  const out = execFileSync('herdr', args, { encoding: 'utf8' }).trim();
+  const out = execFileSync(HERDR, args, { encoding: 'utf8' }).trim();
   return out ? JSON.parse(out).result : null; // send-text answers with nothing
 };
 
@@ -122,18 +126,19 @@ const NOISE = [
   '[Request interrupted',
 ];
 
-const clean = (raw: unknown): string | null => {
-  const t = (typeof raw === 'string'
-    ? raw
-    : Array.isArray(raw)
-      ? raw.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join(' ')
-      : '')
+const clean = (input: unknown): string | null => {
+  const raw = (typeof input === 'string'
+    ? input
+    : Array.isArray(input)
+      ? input.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join(' ')
+      : '');
+  // Anything with a paste in it goes entirely. Cutting the block out instead
+  // looked tidier, but the closing tag repeats the id and blocks can nest, so
+  // a non-greedy match ends at the wrong tag and leaks the rest. A heading is
+  // not worth a parser.
+  if (/<\/?pasted_content\b/i.test(raw)) return null;
+  const t = raw
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-    // Drop what was pasted, keep what was typed around it. The closing tag
-    // repeats the id (</pasted_content id="49da">), and a paste can be left
-    // unclosed, so match loosely and cut to the end when nothing closes it.
-    .replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, ' ')
-    .replace(/<pasted_content[^>]*>[\s\S]*$/, ' ')
     .replace(/\[Image #\d+\]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -167,36 +172,61 @@ const slice = (file: string, bytes: number, fromEnd: boolean): string => {
 const head = (file: string, bytes: number) => slice(file, bytes, false);
 const tail = (file: string, bytes: number) => slice(file, bytes, true);
 
+// Claude flattens the cwd into a directory name, so /a/b_c, /a/b.c and /a/b-c
+// all land in the same place. The name is a lookup hint, never proof of origin:
+// every file read below is checked against the cwd recorded inside it.
 const projectDir = (cwd: string) => join(PROJECTS, cwd.replace(/[/_.]/g, '-'));
+
+const belongsTo = (lines: string[], cwd: string) => {
+  const want = real(cwd);
+  for (const line of lines) {
+    let d: any;
+    try { d = JSON.parse(line); } catch { continue; }
+    if (typeof d?.cwd === 'string') return real(d.cwd) === want;
+  }
+  return false; // nothing claims a cwd: do not assume it is ours
+};
 
 // --- what is allowed to leave this machine ---
 // History is sent by default, because a router that has to be registered per
-// project before it works is a router nobody turns on. Projects whose prompts
-// must not go anywhere are listed in DENY_FILE, one path prefix per line, and
-// fall back to the directory and pane title only. JEV_NO_HISTORY=1 does that
-// for every project in one run. Flip DENY_DEFAULT to opt in instead.
-const DENY_DEFAULT = false;
-const DENY_FILE = process.env.JEV_DENY_FILE ?? join(
+// project before it works is a router nobody turns on. The list file then holds
+// the exceptions. Set HISTORY_BY_DEFAULT to false and the same file becomes an
+// allow list instead - under a different name, so a deny list is never read as
+// an allow list by accident. JEV_NO_HISTORY=1 holds everything for one run.
+const HISTORY_BY_DEFAULT = true;
+const LIST_FILE = process.env.JEV_LIST_FILE ?? join(
   process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), '.config', 'herdr'),
-  'jev-no-history',
+  HISTORY_BY_DEFAULT ? 'jev-no-history' : 'jev-allow-history',
 );
 
-const denyRules = (() => {
+const real = (path: string) => {
+  try { return realpathSync(path); } catch { return path; }
+};
+
+const listed_paths = (() => {
   try {
-    return readFileSync(DENY_FILE, 'utf8')
+    return readFileSync(LIST_FILE, 'utf8')
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith('#'))
-      .map((l) => l.replace(/\/$/, ''));
-  } catch {
-    return []; // no file, no rules
+      .map((l) => real(l.replace(/\/$/, '')));
+  } catch (e: any) {
+    // Only a missing default file means "no rules". Anything else - a typo in
+    // JEV_LIST_FILE, a permission error - would silently turn the policy off.
+    if (e.code === 'ENOENT' && !process.env.JEV_LIST_FILE) return [];
+    throw new Error(`cannot read the history list ${LIST_FILE}: ${e.message}`);
   }
 })();
 
-const sendsHistory = (cwd: string) =>
-  !DENY_DEFAULT &&
-  !process.env.JEV_NO_HISTORY &&
-  !denyRules.some((r) => cwd === r || cwd.startsWith(`${r}/`));
+const isListed = (cwd: string) => {
+  const path = real(cwd);
+  return listed_paths.some((r) => path === r || path.startsWith(`${r}/`));
+};
+
+const sendsHistory = (cwd: string) => {
+  if (process.env.JEV_NO_HISTORY) return false;
+  return HISTORY_BY_DEFAULT ? !isListed(cwd) : isListed(cwd);
+};
 
 // What this project has been about: one heading per recent session.
 function sessionHeadings(cwd: string): string[] {
@@ -210,14 +240,16 @@ function sessionHeadings(cwd: string): string[] {
 
   const sessions: string[] = [];
   for (const f of files) {
+    const top = head(f, 64 * 1024).split('\n');
+    if (!belongsTo(top, cwd)) continue; // a colliding directory name is not proof
     // Claude writes an ai-title near the top for named sessions; otherwise use
     // the first prompt long enough to mean something.
-    const titled = head(f, 4096).split('\n').map((l) => {
+    const titled = top.map((l) => {
       try { return JSON.parse(l); } catch { return null; }
     }).find((d) => d?.type === 'ai-title' && d.aiTitle);
     const title = titled
       ? String(titled.aiTitle).slice(0, CHARS)
-      : head(f, 64 * 1024).split('\n').map(userText).find((t) => t && t.length >= 12);
+      : top.map(userText).find((t) => t && t.length >= 12);
     if (title) sessions.push(title);
   }
   return sessions;
@@ -232,28 +264,44 @@ function recentPrompts(cwd: string, sessionId: string | null): string[] {
   const file = join(projectDir(cwd), `${sessionId}.jsonl`);
   if (!existsSync(file)) return [];
 
+  const lines = tail(file, TAIL).split('\n');
+  if (!belongsTo(lines, cwd)) return [];
+
   const prompts: string[] = [];
-  for (const line of tail(file, TAIL).split('\n')) {
+  for (const line of lines) {
     const t = userText(line);
     if (t && t.length >= 8 && t !== prompts.at(-1)) prompts.push(t);
   }
   return prompts.slice(-PROMPTS);
 }
 
-// 1 pane per workspace. A pane waiting for input beats one mid-turn; among
-// equals the first wins. herdr also reports interactive_ready, but only for
-// agents it launched itself, so it is absent for hand-started panes and cannot
-// be used as a filter here.
-const RANK: Record<string, number> = { idle: 0, done: 0, blocked: 2, working: 3 };
+// A blocked agent is sitting on its own prompt - a permission dialog or a
+// y/n - so text typed there is answering that question, not starting a new
+// one. A pane that has not launched yet has nowhere to put the text. Both are
+// excluded outright; working is not, because an agent mid-turn still takes a
+// queued follow-up in its input box, which is exactly what this tool is for.
+// (herdr reports interactive_ready, but only for agents it launched itself, so
+// it is absent for hand-started panes and cannot be used here.)
+const acceptsDraft = (a: any) => !a.launch_pending && a.agent_status !== 'blocked';
+
+// Among the eligible, a pane waiting for input beats one mid-turn.
+const RANK: Record<string, number> = { idle: 0, done: 0, working: 3 };
 const rank = (status: string) => RANK[status] ?? 1; // unknown sits between
 
+// Same terminal is not the same conversation: a session can be switched under
+// it while we are waiting on the API and on fzf.
+const sessionKey = (a: any) => JSON.stringify([
+  a.agent, a.agent_session?.source, a.agent_session?.kind, a.agent_session?.value,
+]);
+
 type Candidate = {
-  pane_id: string; terminal_id: string; cwd: string; rank: number;
+  pane_id: string; terminal_id: string; cwd: string; rank: number; session: string;
   name: string; label: unknown;
 };
 const candidates = new Map<string, Candidate>();
 for (const a of herdr('agent', 'list').agents) {
   if (typeof a.cwd !== 'string') continue; // cwd is optional in the herdr schema
+  if (!acceptsDraft(a)) continue;
   const seen = candidates.get(a.workspace_id);
   if (seen && seen.rank <= rank(a.agent_status)) continue;
   candidates.set(a.workspace_id, {
@@ -261,6 +309,7 @@ for (const a of herdr('agent', 'list').agents) {
     terminal_id: a.terminal_id,
     cwd: a.cwd,
     rank: rank(a.agent_status),
+    session: sessionKey(a),
     name: `${basename(a.cwd)} — ${a.terminal_title_stripped}`, // for humans
     label: { // for jev
       dir: basename(a.cwd),
@@ -274,12 +323,32 @@ for (const a of herdr('agent', 'list').agents) {
 }
 if (!candidates.size) throw new Error('no agent pane to route to');
 
-const criteria = Object.fromEntries([...candidates].map(([id, c]) => [id, c.label]));
+// Without an escape hatch the model must pick one of the open workspaces even
+// when the prompt belongs to none of them, and a tight distribution over the
+// wrong set still reads as high confidence.
+const NONE = '__none__';
+const criteria = {
+  ...Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
+  [NONE]: 'None of these projects is the right destination for this prompt.',
+};
 
-// DUMP stops before anything leaves the machine: no request, no charge. Use it
-// to see exactly what would be sent. DRY still asks jev but touches no pane.
+const payload = {
+  model: 'jev-latest',
+  state: prompt,
+  questions: {
+    workspace: {
+      type: 'choice',
+      instructions: 'Which project should this prompt be sent to?',
+      criteria,
+    },
+  },
+};
+
+// DUMP stops before anything leaves the machine: no request, no charge. It
+// prints the whole request, the prompt included - that is sent too. DRY still
+// asks jev but touches no pane.
 if (process.env.DUMP) {
-  console.log(JSON.stringify(criteria, null, 2));
+  console.log(JSON.stringify(payload, null, 2));
   console.error(`${candidates.size} candidates, ${JSON.stringify(criteria).length} chars. Nothing sent.`);
   process.exit(0);
 }
@@ -287,17 +356,7 @@ if (process.env.DUMP) {
 const res = await fetch('https://api.typesafe.ai/v1/systemone', {
   method: 'POST',
   headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-  body: JSON.stringify({
-    model: 'jev-latest',
-    state: prompt,
-    questions: {
-      workspace: {
-        type: 'choice',
-        instructions: 'Which project should this prompt be sent to?',
-        criteria,
-      },
-    },
-  }),
+  body: JSON.stringify(payload),
   signal: AbortSignal.timeout(15_000),
 });
 if (!res.ok) throw new Error(`typesafe ${res.status}: ${await res.text()}`);
@@ -310,6 +369,11 @@ const { answers } = await res.json();
 // recognise must not turn into an automatic delivery.
 const CONFIDENT = 0.7;
 const { choice, probabilities = {}, confidence = 0 } = answers.workspace ?? {};
+
+if (choice === NONE && confidence >= CONFIDENT) {
+  console.error('no open workspace fits this prompt; not sending');
+  process.exit(2);
+}
 
 let wid: string = choice;
 if (confidence < CONFIDENT || !candidates.has(wid)) {
@@ -347,6 +411,12 @@ const live = herdr('agent', 'list').agents
   .find((a: any) => a.terminal_id === target.terminal_id);
 if (!live || live.workspace_id !== wid || live.cwd !== target.cwd) {
   throw new Error(`${target.name} is gone or has moved; not sending`);
+}
+if (!acceptsDraft(live)) {
+  throw new Error(`${target.name} is waiting on its own prompt now; not sending`);
+}
+if (sessionKey(live) !== target.session) {
+  throw new Error(`${target.name} switched session; not sending`);
 }
 
 herdr('workspace', 'focus', wid);
@@ -396,14 +466,19 @@ herdr は AI エージェント向けのターミナルマルチプレクサで�
 herdr は 1 つのワークスペースに複数のエージェントペインを持てます。一方、選ばせたい粒度はあくまで「プロジェクト単位」です。選択肢が多すぎると分類精度が落ちますし、同じプロジェクトの別ペインが並んでいても人間には区別がつきません。そこで、ワークスペース単位に情報を畳み込みます。
 
 ```ts
-const RANK: Record<string, number> = { idle: 0, done: 0, blocked: 2, working: 3 };
+const acceptsDraft = (a: any) => !a.launch_pending && a.agent_status !== 'blocked';
+
+const RANK: Record<string, number> = { idle: 0, done: 0, working: 3 };
 const rank = (status: string) => RANK[status] ?? 1; // unknown はその中間
 
+if (!acceptsDraft(a)) continue;
 const seen = candidates.get(a.workspace_id);
 if (seen && seen.rank <= rank(a.agent_status)) continue;
 ```
 
-**入力を待っているペインを、作業中のペインより優先します。**同順なら先勝ちです。
+まず**下書きを置けないペインを外します**。起動前のものと、`blocked` のものです。`blocked` は自分の y/n プロンプトで止まっているので、打ち込んだ文字はその回答として消費されてしまいます。`working` は外しません。作業中のエージェントも入力欄にキューとして受け取れますし、それこそがこのツールの用途です。
+
+残ったものの中では、**入力を待っているペインを作業中のペインより優先します。**同順なら先勝ちです。
 
 ここは最初「すでに候補がいて、かつ今見ているのが `working`」ならスキップする、という後勝ちの 1 行でした。単純ですが穴があって、`idle` の候補が後から来た `blocked` や `unknown` に上書きされます。宛先のワークスペースは合っているのに、入力を受け取れないペインに打ち込む、という外し方をします。
 
@@ -415,7 +490,14 @@ if (seen && seen.rank <= rank(a.agent_status)) continue;
 最初はディレクトリ名とターミナルタイトルだけを渡していました。これだと「その名前から連想できること」しか材料がなく、ディレクトリ名が日付とローマ字の羅列だと手も足も出ません。そこで **Claude Code のセッション履歴**を足しています。
 
 ```ts
-label: { dir: basename(a.cwd), pane: a.terminal_title_stripped, ...history(a.cwd) },
+label: {
+  dir: basename(a.cwd),
+  pane: a.terminal_title_stripped,
+  ...(sendsHistory(a.cwd) ? {
+    sessions: sessionHeadings(a.cwd),
+    prompts: recentPrompts(a.cwd, a.agent_session?.value ?? null),
+  } : {}),
+},
 ```
 
 `history()` が読むのは `~/.claude/projects/<cwd を - で符号化したディレクトリ>/*.jsonl` です。ここに Claude Code が会話ログを 1 セッション 1 ファイルで置いています。
@@ -427,7 +509,9 @@ label: { dir: basename(a.cwd), pane: a.terminal_title_stripped, ...history(a.cwd
 
 `prompts` を mtime で引いてはいけません。同じ cwd に複数セッションがあると、別ターミナルで開いた無関係な会話が「最新」になります。実際、手元の 5 ワークスペースのうち 1 つで、ペインの本来のセッションと mtime 最新が食い違っていました。ID が取れないときは**他のセッションで代用せず、`prompts` を空にします**。
 
-ログには判定の役に立たないものが大量に混ざります。`<bash-input>` とその出力、`<task-notification>`、他セッションからの伝言、スキルの起動文、compaction の要約、画像のパス。これらを `NOISE` で頭から落とし、`<system-reminder>` は中身ごと消し、`<pasted_content>` は**貼り付けられた本文を捨てて地の文だけ残し**、1 件 120 文字で切り、`push` のような一語だけの指示（8 文字未満）と直前と同じ内容は捨てています。残るのは「このプロジェクトで人間が何を言ってきたか」だけです。
+ログには判定の役に立たないものが大量に混ざります。`<bash-input>` とその出力、`<task-notification>`、他セッションからの伝言、スキルの起動文、compaction の要約、画像のパス。これらを `NOISE` で頭から落とし、`<system-reminder>` は中身ごと消し、**貼り付けを含む項目は丸ごと捨て**、1 件 120 文字で切り、`push` のような一語だけの指示（8 文字未満）と直前と同じ内容は捨てています。残るのは「このプロジェクトで人間が何を言ってきたか」だけです。
+
+貼り付けだけを切り出して地の文を残す、という実装を最初は書きました。これは不十分でした。閉じタグが `</pasted_content id="49da">` と**貼り付け ID を繰り返す**うえ、入れ子にもなり得るので、非貪欲マッチが手前の閉じタグで止まって中身が残ります。タグ記法を含むログを貼り付けるだけで起こります。見出し 1 行のためにパーサを書く価値はないので、項目ごと捨てる方に倒しました。
 
 最新セッションのログは 15MB を超えることもあるので、全部は読みません。直近プロンプトは末尾 512KB だけ、`ai-title` は先頭 4KB だけを読んでいます。
 
@@ -460,7 +544,10 @@ JEV_NO_HISTORY=1 DUMP=1 node --env-file=.env route.mts "テスト"
 `choice` 型でいちばん効いているのがここです。
 
 ```ts
-criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
+const criteria = {
+  ...Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
+  [NONE]: 'None of these projects is the right destination for this prompt.',
+};
 ```
 
 公式ドキュメントでは `choice` の `criteria` は "The answer options, as a map. Each key is an option name and each value is a description of that option."（仮訳: 答えの選択肢をマップで渡す。キーが選択肢の名前、値がその説明）と説明されています（出典: [Choice — TypeSafe AI](https://docs.typesafe.ai/primitives/choice)）。このキーと値で、役割をきれいに分けられます。
@@ -483,7 +570,7 @@ criteria: Object.fromEntries([...candidates].map(([id, c]) => [id, c.label])),
 ### 4. 制御文字を潰し、最後の Enter は押さない
 
 ```ts
-herdr('pane', 'send-text', target.pane_id, prompt.replace(/\p{Cc}+/gu, ' ').trim());
+herdr('pane', 'send-text', live.pane_id, prompt.replace(/\p{Cc}+/gu, ' ').trim());
 ```
 
 `send-text` は生バイトをそのまま端末に書き込みます。したがって改行 `\n` は「Enter を押した」ことと同義で、プロンプトが途中で確定されてしまいます。
@@ -500,9 +587,9 @@ herdr('pane', 'send-text', target.pane_id, prompt.replace(/\p{Cc}+/gu, ' ').trim
 
 ```ts
 herdr('workspace', 'focus', wid);
-herdr('agent', 'focus', target.pane_id);
-herdr('pane', 'send-text', target.pane_id, prompt.replace(/\p{Cc}+/gu, ' ').trim());
-herdr('notification', 'show', `-> ${target.label}`, '--sound', 'none');
+herdr('agent', 'focus', live.pane_id);
+herdr('pane', 'send-text', live.pane_id, prompt.replace(/\p{Cc}+/gu, ' ').trim());
+herdr('notification', 'show', `-> ${target.name}`, '--sound', 'none');
 ```
 
 別ワークスペースのペインに送る場合、`agent focus` だけでは画面が移動しません。ワークスペース自体を切り替える必要があるので `workspace focus` を先に呼びます。
