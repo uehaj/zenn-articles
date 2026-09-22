@@ -1,5 +1,5 @@
 ---
-title: "Jev が返す confidence の意味を知る。ループエンジニアリングでどう捌くか"
+title: "Jev が返す confidence の意味〜Jev の応答を受けてループエンジニアリングでどう捌くか〜"
 emoji: "📊"
 type: "tech"
 topics: ["typesafeai", "jev", "llm", "aiagent", "cicd"]
@@ -161,10 +161,10 @@ Noul にはもう一点あります。ある命題とその否定を別々の No
 state: {"offer": "$150,000 per year"}     ← 職種も勤務地も書かれていない
 質問:  この提示額は相場と比べてどうか
 
-  A. 選択肢3つ  below_market / at_market / above_market
+  A. 選択肢3つ  below_market（相場より低い）/ at_market（相場並み）/ above_market（相場より高い）
        → at_market      確率 0.93   confidence 0.89
 
-  B. 選択肢4つ  below_market / at_market / above_market / cannot_tell
+  B. 選択肢4つ  上の3つ + cannot_tell（判断できない）
        → cannot_tell    確率 1.00   confidence 1.00
 ```
 
@@ -172,10 +172,10 @@ state: {"offer": "$150,000 per year"}     ← 職種も勤務地も書かれて�
 state: {"job": "unit-tests", "log": "CI failed."}     ← ログ本体がない
 質問:  この CI 失敗の原因として最も確からしいものはどれか
 
-  A. 選択肢3つ  flaky_infra / real_regression / config_error
+  A. 選択肢3つ  flaky_infra（環境やテストの不安定さ）/ real_regression（コードの退行）/ config_error（設定の誤り）
        → real_regression  確率 0.87   confidence 0.80
 
-  B. 選択肢4つ  flaky_infra / real_regression / config_error / cannot_tell
+  B. 選択肢4つ  上の3つ + cannot_tell（判断できない）
        → cannot_tell      確率 1.00   confidence 0.99
 ```
 
@@ -262,9 +262,9 @@ CI ログ、社内イシュー、レビュー指摘、ログ行は、いずれ�
 
 質問は三つ、同じリクエストに入れます。
 
-- Choice `cause`：`flaky_infra` / `real_regression` / `config_error` / `cannot_tell`
-- Score `severity`：リトライで足りる / 数日中に直す / リリースを止める
-- Noul `enough_info`：「与えられた情報で、どの変更がこの失敗を起こしたか特定できる」
+- Choice `cause`（原因）：`flaky_infra`（環境やテストの不安定さ）/ `real_regression`（コードの退行）/ `config_error`（設定の誤り）/ `cannot_tell`（判断できない）
+- Score `severity`（急ぎ具合）：リトライで足りる / 数日中に直す / リリースを止める
+- Noul `enough_info`（材料は足りているか）：「与えられた情報で、どの変更がこの失敗を起こしたか特定できる」
 
 まずは、ログをどこまで渡すかを変えて測ってみます。
 
@@ -322,10 +322,10 @@ history: "This test passed on every run before commit 4f1a2c and has
 
 質問は四つです。
 
-- Choice `team`：`infra` / `app` / `account` / `cannot_tell`
-- Score `urgency`：様子を見てよい / 今週中 / 即時
-- Noul `has_repro`：「報告者以外が同じ現象を再現するのに足りる手順が書かれている」
-- Noul `enough_info`：「この報告の内容だけで、どのチームが対応すべきか判断できる」
+- Choice `team`（担当チーム）：`infra`（基盤）/ `app`（アプリケーション）/ `account`（権限とアカウント）/ `cannot_tell`（判断できない）
+- Score `urgency`（緊急度）：様子を見てよい / 今週中 / 即時
+- Noul `has_repro`（再現手順があるか）：「報告者以外が同じ現象を再現するのに足りる手順が書かれている」
+- Noul `enough_info`（材料は足りているか）：「この報告の内容だけで、どのチームが対応すべきか判断できる」
 
 イシューの書かれ方を変えて測りました。
 
@@ -364,8 +364,8 @@ history: "This test passed on every run before commit 4f1a2c and has
 
 二つの信号を分ける必要が、ここで最もはっきり出ます。
 
-- Choice `next`：`continue` / `ask_human` / `stop`
-- Noul `enough_info`：「記録された試行に、成功しそうな次の手を選ぶのに足りる情報がある」
+- Choice `next`（次の一手）：`continue`（続行）/ `ask_human`（人に聞く）/ `stop`（中止して報告）
+- Noul `enough_info`（材料は足りているか）：「記録された試行に、成功しそうな次の手を選ぶのに足りる情報がある」
 
 `state` には試行履歴を入れて測りました。
 
@@ -405,8 +405,8 @@ else:
 
 ここまで注意点ばかりでしたが、`confidence` が素直に効く例も見ておきましょう。冒頭のコード例と同じ構成です。
 
-- Choice `disposition`：`auto_fix` / `human_review` / `dismiss`
-- Noul `grounded`：「その指摘は、示された差分のコードによって裏づけられている」
+- Choice `disposition`（処理の仕方）：`auto_fix`（自動修正）/ `human_review`（人の確認）/ `dismiss`（棄却）
+- Noul `grounded`（コードに裏づけられているか）：「その指摘は、示された差分のコードによって裏づけられている」
 
 性質の違う指摘を三つ投げました。
 
@@ -429,7 +429,7 @@ else:
 ![ログ監視。ログ一行から action の Choice を経て、無視、チケット起票、即時呼び出しの三つに分かれる](/images/jev-conf-case-monitor.png)
 
 - **入力**：監視対象のログ一行。
-- **聞くこと**：どうするか（3択）。
+- **聞くこと**：どうするか。Choice `action`（とるべき処置）：`ignore`（無視）/ `ticket`（起票）/ `page`（即時呼び出し）。
 - **出口**：無視、チケット起票、即時呼び出し。
 - **この節で見る読み方**：低い `confidence` の正体を、`cannot_tell` で見分けます。
 
