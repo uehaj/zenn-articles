@@ -9,7 +9,7 @@ published: true
 :::message
 本記事は筆者個人の見解であり、所属する組織の公式見解ではありません。
 
-また、ここで扱う supervisor デーモンと Agent view は research preview の機能です。この領域は仕様が頻繁に、かつ大きく変わります。本文の記述は執筆時点(2026年8月上旬、Claude Code v2.1.220 で確認)のものなので、最新の挙動は[公式ドキュメント](https://code.claude.com/docs/en/agent-view)をご確認ください。
+また、ここで扱う supervisor デーモンと Agent view は research preview の機能です。仕様が変わる可能性があります。本文の記述は執筆時点(2026年8月上旬、Claude Code v2.1.220 で確認)のものなので、最新の挙動は[公式ドキュメント](https://code.claude.com/docs/en/agent-view)をご確認ください。
 :::
 
 ## TL;DR
