@@ -1,5 +1,5 @@
 ---
-title: "Jevが返すconfidenceの意味〜Jevの応答を受けてループエンジニアリングでどう捌くか〜"
+title: "Jevが返すconfidenceの意味〜Jevの応答を受けてループエンジニアリングでどう捌くか〜(実例つき)"
 emoji: "📊"
 type: "tech"
 topics: ["typesafeai", "jev", "llm", "aiagent", "cicd"]
