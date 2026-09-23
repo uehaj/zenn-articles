@@ -3,7 +3,7 @@ title: "Jevが返すconfidenceの意味〜Jevの応答を受けてループエ�
 emoji: "📊"
 type: "tech"
 topics: ["typesafeai", "jev", "llm", "aiagent", "cicd"]
-published: false
+published: true
 ---
 
 :::message
