@@ -16,11 +16,26 @@ published: false
 
 [pstack-claude](https://github.com/michael-denyer/pstack-claude) は、Claude Code に「仕事の進め方」を教えるプラグインです。Lauren Tan (poteto) さんが Cursor 向けに作ったスキル群 pstack を、Claude Code 向けに移植したものです(出典: [pstack-claude の README](https://github.com/michael-denyer/pstack-claude))。元の pstack は [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack) にあります。
 
-たとえば「このバグを直して」と頼むと、Claude Code はいきなりコードを書き換えがちです。pstack を入れると、まず再現し、原因を突き止め、直し、実際に動かして確かめる、という手順を踏むよう Claude Code に指示します。その手順を Markdown で書いて Claude Code に読ませているのが pstack です。
+たとえば「このバグを直して」と頼むと、Claude Code はいきなりコードを書き換えがちです。pstack を入れると、まず再現し、原因を突き止め、直し、実際に動かして確かめる、という手順を踏むよう Claude Code に指示します。その手順を Markdown の指示書に書いて Claude Code に読ませるのが、pstack の中心です。
 
 この記事では、pstack がどんな部品でできていて、依頼を受けたときにどう動くのかを、中身を読んで調べた範囲でまとめます。
 
-読みながら、もう1つの問いも追いかけます。pstack は、なぜ「スタック」という名前なのか。積み重ねるものは何なのか。名前の由来は、移植版と元の pstack のどちらの README にも説明がありません(2026年10月に筆者が確認)。そこで、中身から答えを探します。Claude Code のスキルやフックを自分で書いている人に向けたメモです。細かい話は「詳しく」の折りたたみに、本筋から外れる話は「寄り道」の枠に分けました。どちらも最初は読み飛ばしてかまいません。
+読みながら、もう1つの問いも追いかけます。pstack は、なぜ「スタック」という名前なのか。積み重ねるものは何なのか。名前の由来は、移植版と元の pstack のどちらの README にも説明がありません(2026年10月に筆者が確認)。そこで、中身から答えを探します。Claude Code のスキルやフックを自分で書いている人に向けたメモです。
+
+:::message
+**Claude Code へのインストール方法**
+
+pstack-claude はプラグインのマーケットプレイスとして配布されています。Claude Code の中で次の2つを実行します。
+
+```
+/plugin marketplace add michael-denyer/pstack-claude
+/plugin install pstack@pstack-claude
+```
+
+インストール後に Claude Code を再起動すると、`/pstack:poteto-mode` などのスキルが使えるようになります。更新は `claude plugin update pstack@pstack-claude` です。役割ごとのモデルを選びたいときは `/pstack:setup-pstack` を実行します。
+
+マーケットプレイス名 `pstack-claude` とプラグイン名 `pstack` は、リポジトリの `.claude-plugin/marketplace.json` で確認しました。
+:::
 
 ## TL;DR
 
