@@ -2,7 +2,7 @@
 title: "【メモ】pstack (Claude Code 移植版pstack-claude) のスタック構成とオーケストレーションを読む"
 emoji: "🥔"
 type: "tech"
-topics: ["claudecode", "agentskills", "aiエージェント", "pstack", "ai"]
+topics: ["claudecode", "agentskills", "aiエージェント", "pstack", "mattpocock"]
 published: false
 ---
 
@@ -16,16 +16,30 @@ published: false
 
 [pstack-claude](https://github.com/michael-denyer/pstack-claude) は、Claude Code に「仕事の進め方」を教えるプラグインです。Lauren Tan (poteto) さんが Cursor 向けに作ったスキル群 pstack を、Claude Code 向けに移植したものです(出典: [pstack-claude の README](https://github.com/michael-denyer/pstack-claude))。元の pstack は [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack) にあります。
 
-たとえば「このバグを直して」と頼むと、Claude Code はいきなりコードを書き換えがちです。pstack を入れると、まず再現し、原因を突き止め、直し、実際に動かして確かめる、という手順を踏むよう Claude Code に指示します。その手順を Markdown の指示書に書いて Claude Code に読ませるのが、pstack の中心です。
+pstack が注目されている理由は、その実行力です。何時間も止まらずに動き続け、これまでのエージェントでは手に負えなかった高難度で大規模な修正を、時間をかけてでもやり遂げてしまいます。元の pstack の README も、`/poteto-mode` を Cursor の `/loop` コマンドと組み合わせると、次のように使えると書いています。
 
-この記事では、pstack がどんな部品でできていて、依頼を受けたときにどう動くのかを、中身を読んで調べた範囲でまとめます。
+> "you can make cursor work for many hours without sacrificing rigor."
+> (仮訳: 厳密さを犠牲にせずに、Cursor を何時間も働かせられる。)
+>
+> 出典: [cursor/plugins の pstack の README](https://github.com/cursor/plugins/tree/main/pstack)
 
-読みながら、もう1つの問いも追いかけます。pstack は、なぜ「スタック」という名前なのか。積み重ねるものは何なのか。名前の由来は、移植版と元の pstack のどちらの README にも説明がありません(2026年10月に筆者が確認)。そこで、中身から答えを探します。Claude Code のスキルやフックを自分で書いている人に向けたメモです。
+数日がかりで、子エージェントを数十から数百体動かす案件のための手順書(orchestrate)まで入っています。この記事では、それを支える pstack の部品と動き方を、中身を読んで調べた範囲でまとめます。
 
 :::message
 **Claude Code へのインストール方法**
 
-pstack-claude はプラグインのマーケットプレイスとして配布されています。Claude Code の中で次の2つを実行します。
+pstack-claude は、Michael Denyer 氏による pstack の Claude Code での非公式移植版です。元の pstack の更新を定期的に取り込みながら、次のような点について Claude Code 上でも動作するように変更されています。
+
+- ツールの呼び出し方: Cursor の `Task` ツールを Claude Code の `Agent` ツールに、`AskQuestion` を `AskUserQuestion` に置き換え。エージェント名には `pstack:` を付ける。
+- 子エージェントの動かし方: Cursor のクラウド上のエージェントの代わりに、手元のバックグラウンドの子エージェントを使い、書き込む子ごとに git の worktree を分ける。
+- 設定と記録の置き場所: `~/.cursor/rules/pstack-models.mdc` を Claude Code の設定ディレクトリの `pstack-models.md` に、会話記録の場所を `~/.claude/projects/` に置き換え。
+- モデル名: Cursor で選ぶモデル名を、Claude の opus / fable / sonnet などに置き換え。
+- Cursor にしかない機能の代わり: Cursor の `/loop` コマンドは Claude Code の loop スキルで、`/goal` は依頼書に目標を書くことで、Cursor 組み込みの babysit やスキル作成機能は同梱のスキルや plugin-dev で置き換え。Claude Code には Cursor の推論量の指定の仕組みも無く、移植版は effort 別のエージェント定義を用意している(両者を結びつけたのは筆者の読み)。
+- 移植版独自の方針変更: たとえば autopilot-full では、各 PR をマージするのは人間にしている。
+
+(出典: [pstack-claude](https://github.com/michael-denyer/pstack-claude) の `CONTRIBUTING.md`、置き換え規則を並べた `tools/substitutions.json`、元との違いを記録した `tools/forks.json`)
+
+プラグインのマーケットプレイスとして配布されているので、Claude Code の中で次の2つを実行します。
 
 ```
 /plugin marketplace add michael-denyer/pstack-claude
@@ -37,13 +51,31 @@ pstack-claude はプラグインのマーケットプレイスとして配布さ
 マーケットプレイス名 `pstack-claude` とプラグイン名 `pstack` は、リポジトリの `.claude-plugin/marketplace.json` で確認しました。
 :::
 
+:::message
+**動作に必要なもの**
+
+Claude Code があれば、pstack の大半(poteto-mode、ほとんどのプレイブック、swarm、arena など)はそのまま動きます。次のものは、使う機能に応じて追加で入れます(出典: [pstack-claude の docs/reference.md](https://github.com/michael-denyer/pstack-claude/blob/main/docs/reference.md))。
+
+| 必要なもの | 要る場面 |
+|---|---|
+| Bun | 何日もかかる案件を orchestrate で進めるとき(`orch`)と、GitHub の PR を見張るとき(`watch-pr`) |
+| GitHub CLI(`gh`) | PR の見張りとマージ。`gh auth login` で認証しておく |
+| Graphite CLI(`gt`) | orchestrate プレイブックで PR の積み重ねを扱うとき |
+| `plugin-dev` プラグイン | スキルを書く手伝いをする automate-me、reflect などを使うとき |
+
+bun はいちばん引っかかりやすい依存です。`orch` と `watch-pr` は bun でしか動かず、Node.js では代わりになりません。bun 以外で起動すると「requires bun」と表示して終了します。逆に、この2つを使わないなら bun は要りません。入れ方は [Bun 公式サイト](https://bun.sh) にあります。筆者は `mise use -g bun@latest` で入れました。初回の起動時に、スクリプトが使うパッケージは自動で入ります。
+
+なお、プレイブックの検査や作業の中断・再開に使う補助スクリプトは、Node.js で動きます。
+:::
+
 ## TL;DR
 
+- pstack は、何時間も動き続けて高難度で大規模な修正をやり遂げてしまう実行力で注目されています。
 - pstack で Claude Code の振る舞いを決めているのは、Markdown の指示書です。プログラムもテストを除いて約7,900行あり、行数では指示書より多いほどですが、普段の使い方では呼ばれない補助のコマンドです。
 - 依頼を受けると、pstack は仕事の種類(バグ修正、機能追加など)に合う手順書を選び、その手順どおりに進めます。この手順書を「プレイブック」と呼びます。
 - 作業の一部は子エージェントに任せます。子エージェントにも同じ手順書と決まりを読ませて、同じ進め方をさせます。
 - 何日もかかる大きな案件だけは、進み具合をファイルに書き出して管理します。そのためのコマンドと、GitHub の PR を見張るコマンドには bun が必要です。
-- pstack の構成からは、エージェントの協調、原則、プレイブック、利用者が呼ぶスキルを層に積んだ「スタック」だという強い印象を受けます。名前の由来について作者の説明はありませんが、筆者はここに pstack という名前の理由があると考えています。
+- pstack は、エージェントの協調、原則、プレイブック、利用者が呼ぶスキルを層に積んだ設計です。名前の由来は説明されていませんが、この階層化された設計にあるのではないでしょうか。
 - 元に戻せる作業は人間に確認せずに進め、勝手に決めたことは記録して最後に報告します。作業の前に計画を詰める grilling とは、扱う段階が違います。
 
 ## 依頼を受けてから何が起きるか
@@ -98,7 +130,7 @@ Claude Code(親)
 
 プレイブックには「実装は子エージェントに任せる」のような手順があります。ところが子エージェントは親の会話を見ないまま起動するので、親が読んだ poteto-mode のことも知りません。そこで pstack は、子エージェントの定義ファイルに「作業の前に poteto-mode を全文読め」と書いています。定義ファイルの中身は、ほぼこれだけです。進め方を書く場所が poteto-mode の1か所で済み、親と子が同じ進め方で動きます。
 
-ここまでの1から4を振り返ると、指示書が層になっています。セッション開始時の短い指示、poteto-mode、プレイブック、原則、子エージェントの定義です。上の層は下の層を名前で呼び出し、中身は必要になるまで読みません。筆者はこの層の重なりから、名前の「スタック」を強く感じています。詳しくは後の「なぜ『スタック』なのか」で書きます。
+ここまでの1から4を振り返ると、指示書が層になっています。セッション開始時の短い指示、poteto-mode、プレイブック、原則、子エージェントの定義です。上の層は下の層を名前で呼び出し、中身は必要になるまで読みません。名前の「スタック」との関係は、後の「なぜ『スタック』なのか」で書きます。
 
 :::details 詳しく: 子エージェントのモデルと effort の指定
 子エージェントを起動するときは、どのモデルを使うかを毎回指定します。役割ごとの既定値は `models.json` にあり、たとえばバグ修正には最も強いモデル(fable)、機能追加には標準のモデル(opus)を使います。利用者は `pstack-models.md` というファイルで役割ごとに上書きでき、`opus @xhigh` のようにモデルと推論の強さ(effort)を一緒に指定できます。
@@ -164,6 +196,8 @@ when: Zenn の記事を追加・更新するとき
 - **After** "Verify on the matching surface." `npx zenn preview` で表示を確かめる。
 - **Replace** "Run **Opening a PR**." `published: false` のまま push して止まる。
 ```
+
+`"..."` でくくった "Verify on the matching surface." と "Run **Opening a PR**." は、feature プレイブックの手順の文言をそのまま引用したものです(出典: [pstack-claude](https://github.com/michael-denyer/pstack-claude) v0.9.63 の `skills/poteto-mode/playbooks/feature.md` の手順5と手順8)。
 
 `extends` に土台のプレイブック、`when` にどんな依頼で使うかを書きます。本文では、土台の手順の文言を `"..."` で引用し、その手順の後に足す(After)、置き換える(Replace)などを指定します。
 
@@ -314,15 +348,7 @@ orch コマンド自体には、ファイルの置き場所の既定値があり
 
 いちばん上が、利用者がコマンドとして呼ぶスキルです。`/pstack:poteto-mode` を呼ぶと、仕事に合うプレイブックが選ばれ、プレイブックが原則を読み、子エージェントに仕事を割り振ります。
 
-移植版の README(v0.9.63 に同梱のもの)は pstack を "an opinionated skill stack"(仮訳: 考え方のはっきりしたスキルのスタック)と呼んでいます(出典: [pstack-claude の README](https://github.com/michael-denyer/pstack-claude))。ただ、名前の由来を作者が説明した文章は見つかっていません。
-
-それでも筆者は、この構成から「スタック的だ」という強い印象を受けています。わざわざ pstack と名付けたことには理由があるはずで、その理由はこの層の重なりだと筆者は信じています。そうでなければ、名前に理由がなくなってしまいます。これは筆者の主観です。「p」は作者の名前 poteto から取ったものと推測しますが、これも確かめていません。
-
-なお、swarm や arena、how のように、利用者が直接呼べて、同時にプレイブックからも部品として使われるスキルもあります。層の境目は、きっちり分かれているわけではありません。
-
-### 層になっていることが pstack の特徴
-
-筆者は、この縦の積み方こそが pstack の特徴で、ほかのスキル集と一線を画すところだと感じています。判断の基準(原則)、手順(プレイブック)、実行の仕組み(エージェントの協調)を別々の層に分け、上の層が下の層を呼び出す作りです。ほかのスキル集と細かく比べたわけではないので、これも筆者の主観です。
+移植版の README(v0.9.63 に同梱のもの)は pstack を "an opinionated skill stack"(仮訳: 考え方のはっきりしたスキルのスタック)と呼んでいます(出典: [pstack-claude の README](https://github.com/michael-denyer/pstack-claude))。名前の由来は説明されていませんが、このように階層化された設計になっていることにあるのではないでしょうか。
 
 ## 読んで参考になったこと
 
