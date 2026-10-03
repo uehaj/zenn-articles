@@ -3,7 +3,7 @@ title: "【メモ】pstack (Claude Code 移植版pstack-claude) のスタック�
 emoji: "🥔"
 type: "tech"
 topics: ["claudecode", "agentskills", "aiエージェント", "pstack", "mattpocock"]
-published: false
+published: true
 ---
 
 :::message
@@ -229,7 +229,7 @@ Every project playbook matches this pstack's playbooks.
 
 ## 子エージェントへの仕事の割り振り(オーケストレーション)
 
-親の Claude Code が子エージェントに仕事を割り振り、結果を集めて判断することを、ここではオーケストレーションと呼びます。pstack では、これがあちこちで起きています。専用の実行エンジンは無く、親が Claude Code の標準の機能で子エージェントを起動し、手順は Markdown に書いてあります。
+親の Claude Code が子エージェントに仕事を割り振り、結果を集めて判断することを、ここではオーケストレーションと呼びます。pstack では、これがあちこちで起きています。プレイブックの手順や poteto-mode の決まりが、子エージェントを使うスキルを呼ぶので、利用者が個々のスキルを指定しなくても、必要なところで子エージェントへの割り振りが起きます。専用の実行エンジンは無く、親が Claude Code の標準の機能で子エージェントを起動し、手順は Markdown に書いてあります。
 
 代表的なスキルは次の2つです。
 
