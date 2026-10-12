@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>知財・引用チェックレポート: claude-code-coordinator-and-workers</title>
+<style>
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; margin: 0; padding: 24px 32px 64px; background: #f5f6f8; color: #1b1f24; line-height: 1.7; }
+  h1 { font-size: 1.5rem; border-bottom: 3px solid #2c3e50; padding-bottom: 8px; }
+  h2 { font-size: 1.2rem; margin-top: 2.5rem; border-left: 6px solid #2c3e50; padding-left: 10px; }
+  h3 { font-size: 1.05rem; margin-top: 1.5rem; color: #2c3e50; }
+  section { background: #fff; border-radius: 8px; padding: 16px 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; font-size: 0.92rem; }
+  th, td { border: 1px solid #d0d5db; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #2c3e50; color: #fff; position: sticky; top: 0; }
+  td.center { text-align: center; white-space: nowrap; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .judge { font-weight: bold; border-radius: 4px; padding: 2px 8px; display: inline-block; }
+  .j-yes { background: #d4edda; color: #155724; }
+  .j-no { background: #f8d7da; color: #721c24; }
+  .j-check { background: #fff3cd; color: #856404; }
+  .j-na { background: #e2e3e5; color: #383d41; }
+  .summary-box { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+  .count-tile { flex: 1; min-width: 110px; border-radius: 6px; padding: 10px 14px; text-align: center; }
+  .verdict { font-size: 1.3rem; font-weight: bold; padding: 10px 16px; border-radius: 6px; display: inline-block; margin-bottom: 12px; }
+  .verdict-ok { background: #d4edda; color: #155724; }
+  .verdict-fix { background: #fff3cd; color: #856404; }
+  .verdict-legal { background: #f8d7da; color: #721c24; }
+  ul.action-list li { margin-bottom: 6px; }
+  code, .mono { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; background: #eef0f2; padding: 1px 4px; border-radius: 3px; }
+  .meta-table td:first-child { width: 180px; font-weight: bold; color: #444; background: #fafbfc; }
+  .small { font-size: 0.85rem; color: #555; }
+  .ref-list li { margin-bottom: 4px; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>知財・引用チェックレポート</h1>
+<p class="small">article-ip-check スキルに基づき生成。最終的な公開可否・決裁の判断は知財・輸出管理室および記事作成者が行うこと。</p>
+<section><h2>メタ情報</h2><table class="meta-table">
+<tr><td>記事ファイル</td><td class="mono">articles/claude-code-coordinator-and-workers.md</td></tr><tr><td>タイトル</td><td>Claude Code を窓口、取りまとめ役、ワーカーの3層で回す（判断は LLM、保存と検査と見張りはスクリプト）</td></tr>
+<tr><td>topics</td><td>claudecode, ai, aiエージェント, herdr, cli</td></tr><tr><td>公開先</td><td>Zenn (zenn.dev/uehaj)</td></tr>
+<tr><td>判定日時</td><td>2026-10-12(月) 11:42:17</td></tr>
+<tr><td>使用チェックリスト</td><td>Check_inyou.xlsx（引用チェックシート／Sheet2）<br>gaibu_happyou_koukoku_hyoji_CS_1.1 .xlsx（(B)個別確認／(A)(B)共通）</td></tr></table></section>
+<section><h2>総合判定</h2><div class="verdict verdict-fix">公開可（決裁時の要確認事項とリンク先の確認あり）</div>
+<p>本文に他者著作物の転載は無く、引用・出典の扱いで修正必須の違反は見つからなかった。知財・輸出管理室への相談が必要な項目（引用項番1・7が「はい」等）は無い。</p>
+<p>集計: はい 9 / いいえ 11 / 対象外 14 / 要確認 3</p>
+<ul class="action-list"><li>引用 8: リンク先 PR #214 のレビューコメントに、ユーザー名・セッション ID を含むローカルパスがある → 削るか判断</li>
+<li>E2: 社名「NTTテクノクロス」の表記が CI/GI ガイドラインに沿うか確認</li>
+<li>H（B2・E1）: 決裁文書に「特許出願予定なし」と個人名記載の理由を記載</li></ul></section>
+<section><h2>引用チェック (Check_inyou)</h2><table><tr><th>項番</th><th>チェック内容</th><th>判定</th><th>根拠</th><th>指示事項</th></tr>
+<tr><td class="center">1</td><td class="center">他者著作物に複写・転載禁止の表示があるか</td><td class="center"><span class="judge j-no">いいえ</span></td><td>転載している他者著作物が無い。引用ブロックは L326 の1箇所のみ（窓口セッション＝筆者側の Claude セッションが取りまとめ役に送ったメッセージ）。他者の文章・コード・画像・ロゴの転載は無し。公式ドキュメント由来の事実は日本語で述べてリンク（L12, L27, L82, L87, L165, L188, L341, L361 等）</td><td>-</td></tr>
+<tr><td class="center">2</td><td class="center">引用部分は他者著作物の全部か</td><td class="center"><span class="judge j-no">いいえ</span></td><td>同上。L326 は短い1文で、他者著作物ではない</td><td>-</td></tr>
+<tr><td class="center">3</td><td class="center">他者著作物は公表済みか</td><td class="center"><span class="judge j-na">対象外</span></td><td>他者著作物の引用が無い。参照先（code.claude.com / platform.claude.com / herdr.dev / docs.github.com / github.com/uehaj/sys1grep）はいずれも公開ページ</td><td>-</td></tr>
+<tr><td class="center">4</td><td class="center">引用部分は補助的な位置づけか</td><td class="center"><span class="judge j-na">対象外</span></td><td>他者著作物の引用が無い。本文は筆者の運用記録が主</td><td>-</td></tr>
+<tr><td class="center">5</td><td class="center">引用部分は明確に区別されているか</td><td class="center"><span class="judge j-yes">はい</span></td><td>L326 は <code>&gt;</code> の引用ブロックで区別</td><td>-</td></tr>
+<tr><td class="center">6</td><td class="center">引用部分の出所を明示しているか</td><td class="center"><span class="judge j-yes">はい</span></td><td>L326 は直前 L324「窓口から取りまとめ役に、こういうメッセージが届きました」で出所明示。公式ドキュメント由来の記述は「公式ドキュメントによれば」等の枕詞＋URL（L341「公式ドキュメントは…定めています」、L165「公式ドキュメントの受信制御」）</td><td>-</td></tr>
+<tr><td class="center">7</td><td class="center">引用部分を修正・要約して利用しているか</td><td class="center"><span class="judge j-no">いいえ</span></td><td>英語原文の引用は無い（公式ドキュメントの内容は引用符を付けず日本語で説明）</td><td>-</td></tr>
+<tr><td class="center">8</td><td class="center">その他気になる事項</td><td class="center"><span class="judge j-check">要確認</span></td><td>記事本文ではないが、リンク先 <a href="https://github.com/uehaj/sys1grep/pull/214#issuecomment-6110573895">PR #214 のレビューコメント</a>に、ユーザー名とセッション ID を含むローカル絶対パス（scratchpad パス）が載っている（2026-10-12 に gh api で確認）</td><td>公開前に当該コメントのパス部分を削るか判断する（GitHub 上の編集はオーナー承認後）</td></tr>
+</table>
+</section>
+<section><h2>外部発表チェック - 個別確認 (B)</h2><table><tr><th>項番</th><th>チェック内容</th><th>判定</th><th>根拠</th><th>推奨アクション</th></tr>
+<tr><td class="center">A1</td><td class="center">他社機密情報の記載</td><td class="center"><span class="judge j-no">いいえ（No）</span></td><td>記事内に該当する記述なし。扱うのは公開 OSS（L20 sys1grep）と公開ドキュメント</td><td>-</td></tr>
+<tr><td class="center">A2</td><td class="center">受注開発システムの事例記載</td><td class="center"><span class="judge j-no">いいえ（No）</span></td><td>対象は筆者の公開 OSS（github.com/uehaj/sys1grep）。受注案件の記述なし</td><td>sys1grep が業務の受注開発物でないことを決裁で確認</td></tr>
+<tr><td class="center">B1</td><td class="center">未公開営業情報</td><td class="center"><span class="judge j-no">いいえ（No）</span></td><td>記事内に該当する記述なし</td><td>-</td></tr>
+<tr><td class="center">B2</td><td class="center">ノウハウ保護（特許出願）</td><td class="center"><span class="judge j-no">いいえ（No）</span></td><td>公開ツール（Claude Code / herdr / GitHub）の運用記録。特許出願予定なし</td><td>◆ 決裁文書に「特許出願予定なし（公知技術の運用記録）」と記載</td></tr>
+<tr><td class="center">C1</td><td class="center">著作権留保</td><td class="center"><span class="judge j-yes">はい（Yes）</span></td><td>Zenn 投稿。著作権は投稿者に留保される</td><td>-</td></tr>
+<tr><td class="center">D1</td><td class="center">他社著作物の使用</td><td class="center"><span class="judge j-yes">はい（①不使用）</span></td><td>転載している他者著作物なし（引用チェック参照）。L326 は筆者側セッションのメッセージ</td><td>-</td></tr>
+<tr><td class="center">D2</td><td class="center">引用の適正</td><td class="center"><span class="judge j-na">対象外</span></td><td>D1 が①のため</td><td>念のため引用チェックシートを添付</td></tr>
+<tr><td class="center">D3</td><td class="center">改変利用</td><td class="center"><span class="judge j-na">対象外</span></td><td>D1 が①のため</td><td>-</td></tr>
+<tr><td class="center">E1</td><td class="center">職務著作（個人名の記載）</td><td class="center"><span class="judge j-no">いいえ（No：個人名あり）</span></td><td>L18「NTTテクノクロスの上原です」</td><td>◆ (ｱ) 欄に個人名記載の理由を選択</td></tr>
+<tr><td class="center">E2</td><td class="center">社名表記（CI/GI）</td><td class="center"><span class="judge j-check">要確認</span></td><td>L18「NTTテクノクロス」（カタカナ表記）</td><td>CI/GI ガイドラインの表記と一致するか確認</td></tr>
+<tr><td class="center">E3</td><td class="center">自社商標</td><td class="center"><span class="judge j-no">いいえ（No：記載なし）</span></td><td>記事内に当社商品・サービス名なし</td><td>-</td></tr>
+<tr><td class="center">E4</td><td class="center">他社商標</td><td class="center"><span class="judge j-yes">はい（①③）</span></td><td>Claude Code / Claude Desktop / Fable / Haiku 5.5 / claude-opus-5-5（L66, L198, L275, L309）、GitHub、herdr、Chromium / Safari / Firefox（L231）を技術名・事実として記載。ロゴ・画像なし。「Safari・Firefox では確かめていない」は事実の記述で他社の信用を損なわない</td><td>-</td></tr>
+<tr><td class="center">F1</td><td class="center">個人情報</td><td class="center"><span class="judge j-no">いいえ（No）</span></td><td>筆者の姓（L18）以外の個人名なし。worker-1〜3 等はセッション名</td><td>-</td></tr>
+<tr><td class="center">G1</td><td class="center">公知化のための発表</td><td class="center"><span class="judge j-yes">はい（①）</span></td><td>誰でも閲覧できる Zenn への掲載</td><td>-</td></tr>
+<tr><td class="center">G2</td><td class="center">貨物・技術の非居住者提供</td><td class="center"><span class="judge j-no">いいえ（No）</span></td><td>記事公開以外の提供なし</td><td>-</td></tr>
+<tr><td class="center">H</td><td class="center">◆項目の添付・記載</td><td class="center"><span class="judge j-check">要確認</span></td><td>B2・E1 の指示事項（特許出願予定なし、個人名記載理由）と引用チェックシート</td><td>決裁文書への記載・添付を確認</td></tr>
+</table>
+</section>
+<section><h2>外部発表チェック - (A)(B) 共通</h2><table><tr><th>項番</th><th>内容</th><th>判定</th><th>根拠</th><th>備考</th></tr>
+<tr><td class="center">4-(1)</td><td class="center">性別役割の固定なし</td><td class="center"><span class="judge j-yes">はい</span></td><td>人称は「オーナー（筆者）」「取りまとめ役」等の役割名で、性別を特定する代名詞なし</td><td>-</td></tr>
+<tr><td class="center">4-(2)</td><td class="center">ステレオタイプな描写なし</td><td class="center"><span class="judge j-yes">はい</span></td><td>人称は「オーナー（筆者）」「取りまとめ役」等の役割名で、性別を特定する代名詞なし</td><td>-</td></tr>
+<tr><td class="center">4-(3)</td><td class="center">不快な表現・見切れイラストなし</td><td class="center"><span class="judge j-na">対象外</span></td><td>画像・イラスト不使用</td><td>-</td></tr>
+<tr><td class="center">4-(4)</td><td class="center">擬人化動物の差別表現なし</td><td class="center"><span class="judge j-na">対象外</span></td><td>画像・イラスト不使用</td><td>-</td></tr>
+<tr><td class="center">4-(5)</td><td class="center">思想・宗教・民族シンボルなし</td><td class="center"><span class="judge j-na">対象外</span></td><td>画像・イラスト不使用</td><td>-</td></tr>
+<tr><td class="center">4-(6)</td><td class="center">ハラスメント想起なし</td><td class="center"><span class="judge j-na">対象外</span></td><td>画像・イラスト不使用</td><td>-</td></tr>
+<tr><td class="center">4-(7)</td><td class="center">否定的ハンドサインなし</td><td class="center"><span class="judge j-na">対象外</span></td><td>画像・イラスト不使用</td><td>-</td></tr>
+<tr><td class="center">4-(8)</td><td class="center">差別につながる言葉なし</td><td class="center"><span class="judge j-yes">はい</span></td><td>記事内に差別につながる語なし</td><td>-</td></tr>
+<tr><td class="center">5-(1)</td><td class="center">良い情報のみの環境訴求なし</td><td class="center"><span class="judge j-na">対象外</span></td><td>環境訴求・SDGs ロゴなし</td><td>-</td></tr>
+<tr><td class="center">5-(2)</td><td class="center">国際合意との整合</td><td class="center"><span class="judge j-na">対象外</span></td><td>環境訴求・SDGs ロゴなし</td><td>-</td></tr>
+<tr><td class="center">5-(3)</td><td class="center">国・地域への配慮</td><td class="center"><span class="judge j-na">対象外</span></td><td>環境訴求・SDGs ロゴなし</td><td>-</td></tr>
+<tr><td class="center">5-(4)</td><td class="center">環境表示ガイドライン</td><td class="center"><span class="judge j-na">対象外</span></td><td>環境訴求・SDGs ロゴなし</td><td>-</td></tr>
+<tr><td class="center">5-(5)</td><td class="center">SDGs ロゴ</td><td class="center"><span class="judge j-na">対象外</span></td><td>環境訴求・SDGs ロゴなし</td><td>-</td></tr>
+</table>
+</section>
+<section><h2>参考: 記事内で検出した要注意要素</h2>
+<p class="small">見方: 機械的に洗い出した確認対象の索引で、違反の指摘ではない。対応が要るものは上の表（要確認・いいえ）に反映済み。</p>
+<h3>外部リンク（16 件）</h3><p class="small">目的: 引用 6（出所明示）と出典の一次性の照合用。→ すべて公式ドキュメント・公開リポジトリ・GitHub API。追加対応不要（PR #214 コメントの中身のみ上記）。</p>
+<ul class="ref-list"><li>https://api.github.com/repos/uehaj/sys1grep/rulesets/23994244</li><li>https://code.claude.com/docs/en/cross-session-messaging</li><li>https://code.claude.com/docs/en/cross-session-messaging#availability</li><li>https://code.claude.com/docs/en/cross-session-messaging#control-inbound-messages</li><li>https://code.claude.com/docs/en/cross-session-messaging#message-delivery</li><li>https://code.claude.com/docs/en/remote-control</li><li>https://code.claude.com/docs/en/sub-agents#resume-subagents</li><li>https://github.com/uehaj/sys1grep</li><li>https://github.com/uehaj/sys1grep/issues/211</li><li>https://github.com/uehaj/sys1grep/issues/222</li><li>https://github.com/uehaj/sys1grep/pull/205</li><li>https://github.com/uehaj/sys1grep/pull/214</li><li>https://github.com/uehaj/sys1grep/pull/214#issuecomment-6110573895</li><li>https://github.com/uehaj/sys1grep/pull/223</li><li>https://herdr.dev/docs/cli-reference/</li><li>https://platform.claude.com/docs/en/about-claude/pricing</li></ul>
+<h3>引用ブロック（1 件）</h3><p class="small">目的: 引用 5・6 の照合用。→ 筆者側セッションのメッセージで出所明示あり。追加対応不要。</p><ul><li>L326 オーナーが、このセッション（窓口）で…</li></ul>
+<h3>他社名・製品名</h3><p class="small">目的: E4 の照合用。→ 技術名・事実としての記載のみ、ロゴなし。追加対応不要。</p><p>Anthropic 製品（Claude Code, Claude Desktop, Fable, Opus 5.5, Haiku 5.5）、GitHub、herdr、Chromium、Safari、Firefox</p>
+<h3>数値表現</h3><p class="small">目的: 数値の事実主張に根拠があるかの照合用。→ 単価は公式価格表にリンク、件数は内訳または式を本文に記載、観察値であることを冒頭注記で明示。codex レビュー（4〜8回目）で検算済み。追加対応不要。</p>
+<p>約39万トークン/呼び出し、約$0.26、1日約$25・$6（試算）、408件（17×4×3×2）、673件（340+272+34+27）、12件中11件</p></section>
+</body></html>
