@@ -66,11 +66,11 @@ published: false
 
 そして解釈可能性研究は、この仮説が指す「何か」を、位置と因果まで特定した実物で見せました。
 
-Anthropicのattribution graphs研究(On the Biology of a Large Language Model, 2025)は、Claude 3.5 Haikuが押韻詩を書くとき、行末の押韻候補が**行を書き始める前の時点**(行頭直前の位置)の内部表現[^7]に立っており、その特徴を人為的に書き換えると行末の単語が実際に変わることを、因果介入込みで示しました。補足すると、これは選ばれた事例における存在証明です。計画にあたる特徴が確認できたのは調べた詩の約半数で、研究チーム自身も主張を特定例の実証に限定しています。
+Anthropicのattribution graphs研究([On the Biology of a Large Language Model](https://transformer-circuits.pub/2025/attribution-graphs/biology.html), 2025)は、Claude 3.5 Haikuが押韻詩を書くとき、行末の押韻候補が**行を書き始める前の時点**(行頭直前の位置)の内部表現[^7]に立っており、その特徴を人為的に書き換えると行末の単語が実際に変わることを、因果介入込みで示しました。補足すると、これは選ばれた事例における存在証明です。計画にあたる特徴が確認できたのは調べた詩の約半数で、研究チーム自身も主張を特定例の実証に限定しています。
 
-続くglobal workspace研究(Verbalizable Representations Form a Global Workspace in Language Models, 2026)は、これをさらに解像度高く再現しています。「The soldier marched into the night」という一行目に対し、二行目の開始時点で内部には計画された韻として fight が立っており、モデルは「coming fight」で行を締める。この fight の表現を light に書き換えると(介入は該当する表現を生成の間じゅう固定する形で行われます)、**行末より手前の単語選択まで変わり**(coming → morning)、完成形は「morning light」になる。未来の着地点が現在の選択を条件付けている、という前章の仮説そのものの構図です。
+続くglobal workspace研究([Verbalizable Representations Form a Global Workspace in Language Models](https://transformer-circuits.pub/2026/workspace/index.html), 2026)は、これをさらに解像度高く再現しています。"The soldier marched into the night"という一行目に対し、二行目の開始時点で内部には計画された韻として fight が立っており、モデルは "coming fight" で行を締める。この fight の表現を light に書き換えると(介入は該当する表現を生成の間じゅう固定する形で行われます)、**行末より手前の単語選択まで変わり**(coming → morning)、完成形は "morning light" になる。未来の着地点が現在の選択を条件付けている、という前章の仮説そのものの構図です。
 
-同じ研究は、計画以外の中間計算も同じ枠組みで可視化しています。「巣を張る動物の脚の数は」に対しては、プロンプトにも出力にも現れない spider が中間層に表現され、ant に書き換えると答えが8から6に変わる。「(4+17)*2+7=」に対しては、中間値 21、42 が**計算の要求する順序どおりに**層を追って現れ[^8]、最後に49に至る。研究チームはこの内部空間(J-space)の中身を「入力の純粋な反響でも、次トークンの予測でもなく、モデルが現在推論に使っている概念を指す、話されなかった言葉の集合」と記述しています。「次の単語の予測」という言葉が指すべき実体は、共起の照合ではなく、こういう構造を持った計算でした。
+同じ研究は、計画以外の中間計算も同じ枠組みで可視化しています。「巣を張る動物の脚の数は」に対しては、プロンプトにも出力にも現れない spider が中間層に表現され、ant に書き換えると答えが8から6に変わる。「(4+17)*2+7=」に対しては、中間値 21、42 が**計算の要求する順序どおりに**層を追って現れ[^8]、最後に49に至る。研究チームはこの内部空間(J-space)の中身を、次のように記述しています。"These representations consist of a small, evolving set of unspoken words, neither pure echoes of the input nor predictions of the next token, naming the concepts the model is currently reasoning with."(仮訳: これらの表現は、話されなかった言葉の小さく移り変わる集合からなる。それは入力の純粋な反響でも次のトークンの予測でもなく、モデルがいま推論に使っている概念を名指すものである)「次の単語の予測」という言葉が指すべき実体は、共起の照合ではなく、こういう構造を持った計算でした。
 
 強調しておきたいのは、これらが思弁ではなく観察だということです。内部の表現を特定し、人為的に書き換え、出力の変化で因果を確かめる——そういう観察の方法論(attribution graphs、Jacobian lens(J-lens)など)がこの数年で急速に整い、かつて「ブラックボックス」と一括りにされた内部は、部分的にであれ、開けて確かめられる対象に変わりつつあります。
 
@@ -120,7 +120,7 @@ Wu et al.(2024)は、隠れ状態に将来役立つ情報が現れる理由と�
 
 *参考文献*
 
-- Gurnee et al., "Verbalizable Representations Form a Global Workspace in Language Models" (Transformer Circuits, 2026) https://transformer-circuits.pub/2026/global-workspace/ — Jacobian lens (J-lens)/J-space、脚韻計画の因果介入、自動処理の選択性、CoT外在化
+- Gurnee et al., "Verbalizable Representations Form a Global Workspace in Language Models" (Transformer Circuits, 2026) https://transformer-circuits.pub/2026/workspace/index.html — Jacobian lens (J-lens)/J-space、脚韻計画の因果介入、自動処理の選択性、CoT外在化
 - Lindsey et al., "On the Biology of a Large Language Model" (Transformer Circuits, 2025) https://transformer-circuits.pub/2025/attribution-graphs/biology.html — 脚韻プランニング、多段推論の中間表現の因果的実証
 - Wu, Morris, Levine, "Do Language Models Plan Ahead for Future Tokens?" (2024) https://arxiv.org/abs/2404.00859 — pre-caching / breadcrumbs の切り分け実験
 - Jenner et al., "Evidence of Learned Look-Ahead in a Chess-Playing Neural Network" (NeurIPS 2024) https://arxiv.org/abs/2406.00877 — ゲーム木先読みの内部表現
